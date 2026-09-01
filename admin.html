@@ -174,23 +174,20 @@
         <div class="stat-card"><div class="skeleton"></div><div class="skeleton" style="width:40%"></div></div>
       </div>
 
-      <div class="panel">
-        <div class="panel-title">
-          <span>참여링크 전체</span>
-          <button class="btn btn-accent" onclick="copyLinks()">전체 복사</button>
-        </div>
-        <textarea id="linksText" rows="6" readonly placeholder="불러오는 중..."></textarea>
-      </div>
-
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
         <div class="panel">
-          <div class="panel-title"><span>참석자</span><button class="btn btn-ghost" onclick="copyList('attendees')">복사</button></div>
+          <div class="panel-title"><span>참석자 (완료)</span><button class="btn btn-ghost" onclick="copyList('attendees')">복사</button></div>
           <div id="attendeesList" class="empty-state">불러오는 중...</div>
         </div>
         <div class="panel">
-          <div class="panel-title"><span>미착륙자</span><button class="btn btn-ghost" onclick="copyList('absentees')">복사</button></div>
-          <div id="absenteesList" class="empty-state">불러오는 중...</div>
+          <div class="panel-title"><span>미착륙자 (등록만, 미완료)</span><button class="btn btn-ghost" onclick="copyList('notLanded')">복사</button></div>
+          <div id="notLandedList" class="empty-state">불러오는 중...</div>
         </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title"><span>미참여자 (오늘 등록 자체를 안 함)</span><button class="btn btn-ghost" onclick="copyList('absentees')">복사</button></div>
+        <div id="absenteesList" class="empty-state">불러오는 중...</div>
       </div>
 
       <div class="panel">
@@ -199,6 +196,24 @@
           <button class="btn btn-danger" onclick="refreshHome()"><span id="homeRefreshText">새로고침</span></button>
         </div>
         <div id="warningList" class="empty-state">불러오는 중...</div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <span>📋 지난주 마감 리포트</span>
+          <button class="btn btn-ghost" onclick="loadClosureReport()"><span id="closureRefreshText">새로고침</span></button>
+        </div>
+        <div class="sub" id="closureTabLabel" style="margin-bottom:8px;"></div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+          <div>
+            <div class="panel-title" style="padding:0 0 6px;"><span>경고자 (주간 미달)</span><button class="btn btn-ghost" onclick="copyClosureList('warn')">복사</button></div>
+            <div id="closureWarnList" class="empty-state">불러오는 중...</div>
+          </div>
+          <div>
+            <div class="panel-title" style="padding:0 0 6px;"><span>명예 (풀참·수동부여)</span><button class="btn btn-ghost" onclick="copyClosureList('honor')">복사</button></div>
+            <div id="closureHonorList" class="empty-state">불러오는 중...</div>
+          </div>
+        </div>
       </div>
 
       <div class="panel">
@@ -424,6 +439,7 @@ function refreshHome() {
   const btn = document.getElementById('homeRefreshText');
   if (btn) btn.innerHTML = '<span class="spinner"></span>';
   api('adminGetTodayOverview').then(renderHome).catch(function(e) { handleServerError(e); if (btn) btn.textContent = '새로고침'; });
+  loadClosureReport();
 }
 
 function renderHome(res) {
@@ -434,29 +450,78 @@ function renderHome(res) {
   document.getElementById('homeStats').innerHTML =
     statCard('전체 회원', res.totalMembers) +
     statCard('오늘 참여', res.attendCount) +
-    statCard('미착륙', res.absentees.length) +
+    statCard('미착륙', res.notLanded.length) +
     statCard('경고자', res.warningList.length);
 
-  document.getElementById('linksText').value = res.linksText || '(등록된 링크 없음)';
-  document.getElementById('attendeesList').innerHTML = res.attendees.length ? res.attendees.map(n => '<div style="padding:4px 0;">' + n + '</div>').join('') : '<div class="empty-state">아직 없음</div>';
-  document.getElementById('absenteesList').innerHTML = res.absentees.length ? res.absentees.map(n => '<div style="padding:4px 0;">' + n + '</div>').join('') : '<div class="empty-state">전원 참여!</div>';
+  // No. + 닉네임 + 참여링크 포맷 (참석자/미착륙자 공통 양식)
+  document.getElementById('attendeesList').innerHTML = renderNumberedLinkList(res.attendees, '아직 없음');
+  document.getElementById('notLandedList').innerHTML = renderNumberedLinkList(res.notLanded, '없음');
+  document.getElementById('absenteesList').innerHTML = res.absentees.length
+    ? res.absentees.map((n, i) => '<div style="padding:4px 0;">' + (i + 1) + '. ' + n + '</div>').join('')
+    : '<div class="empty-state">전원 참여!</div>';
   document.getElementById('warningList').innerHTML = res.warningList.length ? res.warningList.map(n => '<div style="padding:4px 0;">' + n + '</div>').join('') : '<div class="empty-state">경고자 없음</div>';
+
+  window._todayOverview = res; // 복사 시 재사용
+}
+
+function renderNumberedLinkList(list, emptyText) {
+  if (!list.length) return '<div class="empty-state">' + emptyText + '</div>';
+  return list.map(function(item, i) {
+    return '<div style="padding:4px 0;">' + (i + 1) + '. ' + item.nickname + ' — ' + item.link + '</div>';
+  }).join('');
 }
 
 function statCard(label, value) {
   return '<div class="stat-card"><div class="label">' + label + '</div><div class="value">' + value + '</div></div>';
 }
 
-function copyLinks() {
-  const el = document.getElementById('linksText');
-  el.select();
-  document.execCommand('copy');
-  showToast('링크 전체가 복사됐어요.', 'success');
-}
 function copyList(which) {
-  const el = document.getElementById(which === 'attendees' ? 'attendeesList' : 'absenteesList');
-  const text = Array.from(el.querySelectorAll('div')).map(d => d.textContent).join('\n');
+  const res = window._todayOverview;
+  if (!res) { showToast('먼저 데이터를 불러와주세요.', 'error'); return; }
+  let text = '';
+  if (which === 'attendees') {
+    text = res.attendees.map((item, i) => (i + 1) + '. ' + item.nickname + ' — ' + item.link).join('\n');
+  } else if (which === 'notLanded') {
+    text = res.notLanded.map((item, i) => (i + 1) + '. ' + item.nickname + ' — ' + item.link).join('\n');
+  } else {
+    text = res.absentees.map((n, i) => (i + 1) + '. ' + n).join('\n');
+  }
   if (!text) { showToast('복사할 내용이 없어요.', 'error'); return; }
+  navigator.clipboard.writeText(text).then(function() { showToast('복사됐어요.', 'success'); });
+}
+
+// ─── 지난주 마감 리포트 (경고자/명예자) ───
+function loadClosureReport() {
+  const btn = document.getElementById('closureRefreshText');
+  if (btn) btn.innerHTML = '<span class="spinner"></span>';
+  api('adminGetLastWeekClosureReport').then(renderClosureReport).catch(function(e) { handleServerError(e); if (btn) btn.textContent = '새로고침'; });
+}
+
+function renderClosureReport(res) {
+  document.getElementById('closureRefreshText').textContent = '새로고침';
+  if (!res.ok) { showToast('결산 리포트를 불러오지 못했어요.', 'error'); return; }
+  window._closureReport = res;
+  if (!res.tabName) {
+    document.getElementById('closureTabLabel').textContent = '아직 마감된 주가 없어요 (첫 주는 결산 대상이 없음).';
+    document.getElementById('closureWarnList').innerHTML = '<div class="empty-state">-</div>';
+    document.getElementById('closureHonorList').innerHTML = '<div class="empty-state">-</div>';
+    return;
+  }
+  document.getElementById('closureTabLabel').textContent = res.tabName + ' 마감 기준';
+  document.getElementById('closureWarnList').innerHTML = res.warnList.length
+    ? res.warnList.map((n, i) => '<div style="padding:4px 0;">' + (i + 1) + '. ' + n + '</div>').join('')
+    : '<div class="empty-state">경고자 없음</div>';
+  document.getElementById('closureHonorList').innerHTML = res.honorList.length
+    ? res.honorList.map((n, i) => '<div style="padding:4px 0;">' + (i + 1) + '. ' + n + '</div>').join('')
+    : '<div class="empty-state">해당자 없음</div>';
+}
+
+function copyClosureList(which) {
+  const res = window._closureReport;
+  if (!res || !res.tabName) { showToast('복사할 내용이 없어요.', 'error'); return; }
+  const list = which === 'warn' ? res.warnList : res.honorList;
+  if (!list.length) { showToast('복사할 내용이 없어요.', 'error'); return; }
+  const text = list.map((n, i) => (i + 1) + '. ' + n).join('\n');
   navigator.clipboard.writeText(text).then(function() { showToast('복사됐어요.', 'success'); });
 }
 
