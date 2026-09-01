@@ -97,6 +97,18 @@
   }
   .account-bar #logoutBtn:hover { background: #FAFAFA; color: var(--text); }
   .error-detail { font-size: 11px; color: var(--muted); margin-top: 6px; word-break: break-all; }
+
+  .account-pills { display: inline-flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  .pill { display: inline-block; padding: 3px 9px; border-radius: 12px; font-size: 11px; font-weight: 700; }
+  .pill-week { background: #F0F0F0; color: var(--text); }
+  .pill-service { background: #FFF1E6; color: #C2540A; }
+  .pill-honor { background: #FCE7F0; color: var(--ig-pink); }
+
+  .my-link-box {
+    margin-top: 14px; padding: 12px 14px; background: #FAFAFA; border-radius: 12px;
+    font-size: 12.5px; color: var(--muted);
+  }
+  .my-link-box a { color: var(--ig-pink); word-break: break-all; }
 </style>
 </head>
 <body>
@@ -107,6 +119,7 @@
   <p id="phaseLabel">확인 중...</p>
   <div id="accountBar" class="account-bar hidden">
     <span id="accountLabel"></span>
+    <span id="accountPills" class="account-pills"></span>
     <button id="logoutBtn" onclick="doLogout()">로그아웃</button>
   </div>
 </div>
@@ -138,14 +151,9 @@
 
   <!-- 홈 화면 -->
   <div class="card hidden" id="homeCard">
-    <div id="statusBadge"></div>
-    <div class="stat-row">
-      <span class="stat-label">이번 주 참여</span>
-      <span class="stat-value" id="weeklyCount">-</span>
-    </div>
-
-    <div style="margin-top:20px;" id="actionArea"></div>
+    <div style="margin-top:0;" id="actionArea"></div>
     <div class="center-note" id="phaseNote"></div>
+    <div class="my-link-box hidden" id="myLinkBox"></div>
   </div>
 
   <!-- 잠금 화면 -->
@@ -187,6 +195,20 @@ function api(action, params) {
 
 let currentMember = null;
 let currentState = null;
+let pollTimer = null;
+
+// 시간 판정은 전부 서버(getServiceContext_)가 하고 클라이언트는 스스로 계산하지 않는다는
+// 원칙에 맞춰, "완료 가능 시간"을 기다리는 동안엔 주기적으로 서버 상태를 다시 물어봐서
+// 자동으로 버튼을 활성화한다 (클라이언트 로컬시계로 22:00을 직접 계산하지 않음).
+function stopPolling() {
+  if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
+}
+function startPolling() {
+  if (pollTimer) return; // 중복 방지
+  pollTimer = setInterval(function () {
+    if (currentMember) refreshHome();
+  }, 30000); // 30초마다 서버 재조회
+}
 
 // ─── 자동로그인 ───
 window.onload = function() {
@@ -257,6 +279,7 @@ function handleHomeResult(res) {
   document.getElementById('loadingCard').classList.add('hidden');
 
   if (!res.ok) {
+    stopPolling();
     localStorage.removeItem('repost_member');
     currentMember = null;
     document.getElementById('accountBar').classList.add('hidden');
@@ -286,6 +309,7 @@ function handleHomeResult(res) {
 }
 
 function doLogout() {
+  stopPolling();
   localStorage.removeItem('repost_member');
   currentMember = null;
   currentState = null;
@@ -302,14 +326,23 @@ function doLogout() {
 function renderHome(res) {
   const phaseText = { LINK_OPEN: '참여 가능 시간 (11:00~22:00)', COMPLETE_OPEN: '완료투표 가능 시간', CLOSED: '정산 진행 중 (10:00~11:00)' };
   document.getElementById('phaseLabel').textContent = phaseText[res.phase] || '';
-  document.getElementById('weeklyCount').textContent = res.weeklyCount.participated + '회';
 
-  let badgeHtml = '';
-  if (currentMember.role === '운영진') badgeHtml = '<span class="badge badge-admin">👑 운영진</span>';
-  else if (res.flow === 'SERVICE') badgeHtml = '<span class="badge badge-service">🛠 봉사대상</span>';
-  else if (currentMember.honor) badgeHtml = '<span class="badge badge-honor">⭐ 명예 (이번 주)</span>';
-  else badgeHtml = '<span class="badge badge-normal">정상 참여중</span>';
-  document.getElementById('statusBadge').innerHTML = badgeHtml;
+  // 계정정보 옆에 상황에 따라 노출되는 pill들 (이번주 참여횟수는 항상, 봉사/명예는 해당할 때만)
+  let pills = '<span class="pill pill-week">이번 주 ' + res.weeklyCount.participated + '회</span>';
+  if (currentMember.role === '운영진') pills += '<span class="pill pill-honor">👑 운영진</span>';
+  else if (res.flow === 'SERVICE') pills += '<span class="pill pill-service">🛠 봉사대상</span>';
+  else if (currentMember.honor) pills += '<span class="pill pill-honor">⭐ 명예</span>';
+  document.getElementById('accountPills').innerHTML = pills;
+
+  // 오늘 내가 등록한 링크 노출
+  const linkBox = document.getElementById('myLinkBox');
+  if (res.myLink) {
+    linkBox.classList.remove('hidden');
+    linkBox.innerHTML = '오늘 등록한 링크<br><a href="' + res.myLink + '" target="_blank" rel="noopener">' + res.myLink + '</a>';
+  } else {
+    linkBox.classList.add('hidden');
+    linkBox.innerHTML = '';
+  }
 
   renderActionArea(res);
 }
@@ -319,6 +352,7 @@ function renderActionArea(res) {
   const note = document.getElementById('phaseNote');
   area.innerHTML = '';
   note.textContent = '';
+  stopPolling(); // 렌더링할 때마다 초기화하고, 필요한 경우에만 아래서 다시 켠다
 
   if (res.flow === 'SINGLE_COMPLETE') {
     if (res.hasComplete) {
@@ -340,7 +374,12 @@ function renderActionArea(res) {
       area.innerHTML = renderLinkInput('link');
       return;
     }
-    if (res.phase !== 'COMPLETE_OPEN') { note.textContent = '링크등록 완료! 22:00 이후 완료투표를 진행해주세요.'; return; }
+    if (res.phase !== 'COMPLETE_OPEN') {
+      area.innerHTML = renderDisabledComplete('참여완료');
+      note.textContent = '링크등록 완료! 22:00부터 완료투표 버튼이 자동으로 활성화돼요.';
+      startPolling();
+      return;
+    }
     area.innerHTML = '<button class="btn btn-complete" id="actionBtn" onclick="doComplete()"><span id="actionBtnText">참여완료</span></button>';
     return;
   }
@@ -355,10 +394,19 @@ function renderActionArea(res) {
       area.innerHTML = '<button class="btn btn-service" id="actionBtn" onclick="doService()"><span id="actionBtnText">봉사참여</span></button>';
       return;
     }
-    if (res.phase !== 'COMPLETE_OPEN') { note.textContent = '봉사참여 완료! 22:00 이후 봉사완료를 진행해주세요.'; return; }
+    if (res.phase !== 'COMPLETE_OPEN') {
+      area.innerHTML = renderDisabledComplete('봉사완료');
+      note.textContent = '봉사참여 완료! 22:00부터 봉사완료 버튼이 자동으로 활성화돼요.';
+      startPolling();
+      return;
+    }
     area.innerHTML = '<button class="btn btn-service" id="actionBtn" onclick="doServiceComplete()"><span id="actionBtnText">봉사완료</span></button>';
     return;
   }
+}
+
+function renderDisabledComplete(label) {
+  return '<button class="btn btn-complete" disabled style="opacity:0.45;cursor:not-allowed;">' + label + '</button>';
 }
 
 function renderLinkInput(mode) {
