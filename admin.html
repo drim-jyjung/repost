@@ -96,15 +96,64 @@
   .toast.success { border-color: var(--success); }
 
   .empty-state { color: var(--muted); font-size: 13px; padding: 20px; text-align: center; }
+  .hidden { display: none !important; }
+
+  .login-screen {
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .login-box {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+    padding: 32px 28px; width: 100%; max-width: 340px;
+  }
+  .login-box h1 { font-size: 17px; margin: 0 0 4px; text-align: center; }
+  .login-box .sub2 { text-align: center; color: var(--muted); font-size: 12.5px; margin-bottom: 22px; }
+  .login-box label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; font-weight: 600; }
+  .login-box .field { margin-bottom: 14px; }
+  .login-box .error-text { color: var(--danger); font-size: 12.5px; margin-top: 8px; display: none; }
+  .login-box .btn { width: 100%; padding: 12px; margin-top: 6px; }
+
+  .account-chip {
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+    padding: 10px 14px; margin: 0 14px 10px; background: var(--panel2); border: 1px solid var(--border);
+    border-radius: 8px; font-size: 12px; color: var(--muted);
+  }
+  .sidebar.collapsed .account-chip { display: none; }
+  .account-chip button {
+    background: none; border: 1px solid var(--border); color: var(--muted); border-radius: 6px;
+    padding: 4px 8px; font-size: 11px; cursor: pointer;
+  }
+  .account-chip button:hover { color: var(--text); }
 </style>
 </head>
 <body>
 
-<div class="layout">
+<!-- ══════ 로그인 화면 (운영진 계정만 통과) ══════ -->
+<div class="login-screen" id="loginScreen">
+  <div class="login-box">
+    <h1>🎈 리포스트열기구 Admin</h1>
+    <div class="sub2">운영진 계정으로만 접속할 수 있어요</div>
+    <div class="field">
+      <label>닉네임</label>
+      <input type="text" id="adminNickname" placeholder="예: 운영자1" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>인스타 아이디</label>
+      <input type="text" id="adminAccountId" placeholder="예: admin1_insta" autocomplete="off">
+    </div>
+    <div class="error-text" id="adminLoginError"></div>
+    <button class="btn btn-accent" id="adminLoginBtn" onclick="doAdminLogin()"><span id="adminLoginBtnText">로그인</span></button>
+  </div>
+</div>
+
+<div class="layout hidden" id="mainLayout">
   <div class="sidebar" id="sidebar">
     <div class="sidebar-header">
       <h1>🎈 리포스트열기구 Admin</h1>
       <button class="toggle-btn" id="toggleBtn" onclick="toggleSidebar()" aria-label="메뉴 접기/펼치기">☰</button>
+    </div>
+    <div class="account-chip">
+      <span id="adminAccountLabel">-</span>
+      <button onclick="doAdminLogout()">로그아웃</button>
     </div>
     <div class="nav-item active" onclick="switchPage('home')" data-page="home"><span class="icon">🏠</span><span class="label">홈</span></div>
     <div class="nav-item" onclick="switchPage('weekly')" data-page="weekly"><span class="icon">📊</span><span class="label">주간현황</span></div>
@@ -225,12 +274,98 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbzXVUjvvw1feZbE0XJhzG_V
 
 // google.script.run 대신 쓰는 fetch 래퍼. text/plain으로 보내면 브라우저가 preflight(OPTIONS)
 // 요청을 안 보내서(=simple request) 앱스크립트가 못 받는 문제를 피할 수 있음.
+let currentAdmin = null;
+
 function api(action, params) {
+  params = params || {};
+  // admin* 액션엔 항상 현재 로그인된 운영진의 memberId를 실어보냄 — 서버(requireAdmin_)가
+  // 매 호출마다 이 값으로 실제 운영진인지 검증함
+  if (action.indexOf('admin') === 0 && currentAdmin) {
+    params = Object.assign({ adminId: currentAdmin.memberId }, params);
+  }
   return fetch(API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action: action, params: params || {} }),
-  }).then(function (r) { return r.json(); });
+    body: JSON.stringify({ action: action, params: params }),
+  }).then(function (r) {
+    return r.text().then(function (text) {
+      try {
+        return JSON.parse(text);
+      } catch (e) {
+        const err = new Error('서버 응답을 해석하지 못했어요 (JSON 아님).');
+        err.rawResponse = text.slice(0, 300);
+        throw err;
+      }
+    });
+  }).then(function (res) {
+    if (!res.ok && res.authRequired) {
+      // 세션 만료/권한 상실 — 로그인 화면으로 되돌림
+      doAdminLogout();
+    }
+    return res;
+  });
+}
+
+// ─── 관리자 로그인/로그아웃 ───
+window.addEventListener('DOMContentLoaded', function () {
+  const saved = localStorage.getItem('repost_admin');
+  if (saved) {
+    const { nickname, accountId } = JSON.parse(saved);
+    api('adminLogin', { nickname: nickname, accountId: accountId }).then(function (res) {
+      if (res.ok) enterAdmin(res.member);
+      else { localStorage.removeItem('repost_admin'); }
+    }).catch(function () { /* 자동로그인 실패는 조용히 로그인화면 유지 */ });
+  }
+});
+
+function doAdminLogin() {
+  const nickname = document.getElementById('adminNickname').value.trim();
+  const accountId = document.getElementById('adminAccountId').value.trim();
+  const errEl = document.getElementById('adminLoginError');
+  errEl.style.display = 'none';
+  if (!nickname || !accountId) {
+    errEl.textContent = '닉네임과 인스타 아이디를 모두 입력해주세요.';
+    errEl.style.display = 'block';
+    return;
+  }
+  document.getElementById('adminLoginBtnText').innerHTML = '<span class="spinner"></span> 로그인 중';
+  document.getElementById('adminLoginBtn').disabled = true;
+  api('adminLogin', { nickname: nickname, accountId: accountId }).then(function (res) {
+    document.getElementById('adminLoginBtnText').textContent = '로그인';
+    document.getElementById('adminLoginBtn').disabled = false;
+    if (!res.ok) {
+      errEl.textContent = res.error;
+      errEl.style.display = 'block';
+      return;
+    }
+    localStorage.setItem('repost_admin', JSON.stringify({ nickname: nickname, accountId: accountId }));
+    enterAdmin(res.member);
+  }).catch(function (err) {
+    document.getElementById('adminLoginBtnText').textContent = '로그인';
+    document.getElementById('adminLoginBtn').disabled = false;
+    console.error('[repost-admin] login error:', err);
+    errEl.textContent = '로그인 중 오류가 발생했어요. 콘솔(F12)을 확인해주세요.';
+    errEl.style.display = 'block';
+  });
+}
+
+function enterAdmin(member) {
+  currentAdmin = member;
+  document.getElementById('adminAccountLabel').textContent = member.nickname + ' (운영진)';
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('mainLayout').classList.remove('hidden');
+  applyInitialSidebarState();
+  refreshHome();
+  loadSuspiciousLinks();
+}
+
+function doAdminLogout() {
+  currentAdmin = null;
+  localStorage.removeItem('repost_admin');
+  document.getElementById('mainLayout').classList.add('hidden');
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('adminNickname').value = '';
+  document.getElementById('adminAccountId').value = '';
 }
 
 function isNarrow() { return window.innerWidth <= 640; }
@@ -268,7 +403,8 @@ function switchPage(name) {
   if (name === 'weekly') { loadWeeklyTable(); }
 }
 
-window.onload = function() { applyInitialSidebarState(); refreshHome(); loadSuspiciousLinks(); };
+// 참고: 예전엔 여기서 바로 refreshHome()/loadSuspiciousLinks()를 호출했지만
+// 이제 로그인 성공 후(enterAdmin) 호출하도록 옮김. window.onload는 더 이상 필요 없음.
 
 function showToast(msg, type) {
   const t = document.getElementById('toast');
@@ -278,7 +414,8 @@ function showToast(msg, type) {
 }
 
 function handleServerError(err) {
-  showToast('서버 오류가 발생했어요: ' + (err && err.message ? err.message : err), 'error');
+  console.error('[repost-admin] server error detail:', err);
+  showToast('서버 오류가 발생했어요: ' + (err && err.message ? err.message : err) + ' (콘솔 확인)', 'error');
 }
 
 // ─── 홈 ───
