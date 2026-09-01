@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<base target="_top">
+<style>
+  :root {
+    --ig-purple: #833AB4;
+    --ig-pink: #E1306C;
+    --ig-orange: #F77737;
+    --pastel-bg: #F6EEFA;
+    --bg: #FFFFFF;
+    --text: #262626;
+    --muted: #9CA3AF;
+    --danger: #ED4956;
+    --success: #2E9E5B;
+    --border: #F0F0F0;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "맑은 고딕", sans-serif;
+    background: var(--bg); color: var(--text); min-height: 100vh;
+  }
+  .header {
+    padding: 36px 20px 20px; text-align: center;
+  }
+  .logo-badge {
+    width: 56px; height: 56px; border-radius: 18px; margin: 0 auto 14px;
+    background: var(--pastel-bg); display: flex; align-items: center; justify-content: center; font-size: 26px;
+  }
+  .header h1 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.3px; color: var(--text); }
+  .header p { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+  .container { max-width: 400px; margin: 0 auto; padding: 4px 20px 40px; }
+  .card {
+    background: #fff; border: 1px solid var(--border); border-radius: 22px; padding: 26px 22px; margin-bottom: 16px;
+  }
+  .field { margin-bottom: 16px; }
+  .field label { display: block; font-size: 12.5px; color: var(--muted); margin-bottom: 7px; font-weight: 600; }
+  .field input {
+    width: 100%; padding: 14px 16px; border: 1.5px solid #ECECEC; border-radius: 14px;
+    font-size: 15px; outline: none; transition: border-color .15s; background: #FAFAFA;
+  }
+  .field input:focus { border-color: var(--ig-pink); background: #fff; }
+  .error-text { color: var(--danger); font-size: 12.5px; margin-top: 7px; display: none; }
+  .btn {
+    width: 100%; padding: 15px; border: none; border-radius: 14px; font-size: 15px; font-weight: 700;
+    color: #fff; cursor: pointer; transition: opacity .15s, transform .1s; display: flex; align-items: center; justify-content: center; gap: 8px;
+  }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { opacity: 0.55; cursor: not-allowed; }
+  .btn-primary { background: linear-gradient(135deg, var(--ig-purple), var(--ig-pink)); }
+  .btn-service { background: linear-gradient(135deg, var(--ig-orange), #FCAF45); }
+  .btn-complete { background: var(--success); }
+  .btn-secondary { background: #F5F5F5; color: var(--text); }
+
+  .spinner {
+    width: 16px; height: 16px; border: 2.5px solid rgba(255,255,255,0.4); border-top-color: #fff;
+    border-radius: 50%; animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .badge { display: inline-block; padding: 6px 14px; border-radius: 20px; font-size: 12.5px; font-weight: 700; }
+  .badge-normal { background: #E9F7EF; color: var(--success); }
+  .badge-service { background: #FFF1E6; color: #C2540A; }
+  .badge-honor { background: #FCE7F0; color: var(--ig-pink); }
+  .badge-admin { background: #EAF1FD; color: #2563EB; }
+  .badge-locked { background: #FDECEC; color: var(--danger); }
+
+  .stat-row { display: flex; justify-content: space-between; align-items: center; margin: 18px 0 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+  .stat-label { font-size: 13px; color: var(--muted); }
+  .stat-value { font-size: 22px; font-weight: 700; }
+
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: #262626; color: #fff; padding: 13px 22px; border-radius: 14px;
+    font-size: 13.5px; max-width: 88%; text-align: center; opacity: 0; transition: opacity .25s, bottom .25s;
+    pointer-events: none; z-index: 100;
+  }
+  .toast.show { opacity: 1; bottom: 32px; }
+  .toast.error { background: var(--danger); }
+  .toast.success { background: var(--success); }
+
+  .skeleton { background: linear-gradient(90deg, #f2f2f2 25%, #fafafa 50%, #f2f2f2 75%); background-size: 200% 100%; animation: shimmer 1.2s infinite; border-radius: 10px; height: 18px; margin-bottom: 8px; }
+  @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+  .hidden { display: none !important; }
+  .center-note { text-align: center; color: var(--muted); font-size: 12.5px; margin-top: 12px; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo-badge">🎈</div>
+  <h1>리포스트열기구</h1>
+  <p id="phaseLabel">확인 중...</p>
+</div>
+
+<div class="container">
+
+  <!-- 로그인 화면 -->
+  <div class="card" id="loginCard">
+    <div class="field">
+      <label>닉네임</label>
+      <input type="text" id="loginNickname" placeholder="예: 열기구히아" autocomplete="off">
+    </div>
+    <div class="field">
+      <label>인스타 아이디</label>
+      <input type="text" id="loginAccountId" placeholder="예: hia_insta" autocomplete="off">
+      <div class="error-text" id="loginError"></div>
+    </div>
+    <button class="btn btn-primary" id="loginBtn" onclick="doLogin()">
+      <span id="loginBtnText">로그인</span>
+    </button>
+  </div>
+
+  <!-- 로딩 스켈레톤 -->
+  <div class="card hidden" id="loadingCard">
+    <div class="skeleton" style="width:60%"></div>
+    <div class="skeleton" style="width:40%"></div>
+    <div class="skeleton" style="width:80%; height:44px; margin-top:16px;"></div>
+  </div>
+
+  <!-- 홈 화면 -->
+  <div class="card hidden" id="homeCard">
+    <div id="statusBadge"></div>
+    <div class="stat-row">
+      <span class="stat-label">이번 주 참여</span>
+      <span class="stat-value" id="weeklyCount">-</span>
+    </div>
+
+    <div style="margin-top:20px;" id="actionArea"></div>
+    <div class="center-note" id="phaseNote"></div>
+  </div>
+
+  <!-- 잠금 화면 -->
+  <div class="card hidden" id="lockedCard">
+    <div class="badge badge-locked">🔒 계정 잠금</div>
+    <p style="margin-top:14px; font-size:14px; line-height:1.6;">봉사 미이행으로 계정이 잠겼습니다.<br>운영진에게 문의해주세요.</p>
+  </div>
+
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// GitHub 등 외부 호스팅에서 구글 앱스크립트를 호출하기 위한 배포 URL
+const API_URL = 'https://script.google.com/macros/s/AKfycbzXVUjvvw1feZbE0XJhzG_V5IFG0I9vyu2jFBbrALZhQ4kqbSlLE-8sk_Lp-wvmueIU/exec';
+
+// google.script.run 대신 쓰는 fetch 래퍼. text/plain으로 보내면 브라우저가 preflight(OPTIONS)
+// 요청을 안 보내서(=simple request) 앱스크립트가 못 받는 문제를 피할 수 있음.
+function api(action, params) {
+  return fetch(API_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify({ action: action, params: params || {} }),
+  }).then(function (r) { return r.json(); });
+}
+
+let currentMember = null;
+let currentState = null;
+
+// ─── 자동로그인 ───
+window.onload = function() {
+  const saved = localStorage.getItem('repost_member');
+  if (saved) {
+    const { nickname, accountId } = JSON.parse(saved);
+    showLoading();
+    api('login', { nickname: nickname, accountId: accountId })
+      .then(handleHomeResult)
+      .catch(handleServerError);
+  }
+};
+
+function showLoading() {
+  document.getElementById('loginCard').classList.add('hidden');
+  document.getElementById('homeCard').classList.add('hidden');
+  document.getElementById('lockedCard').classList.add('hidden');
+  document.getElementById('loadingCard').classList.remove('hidden');
+}
+
+function doLogin() {
+  const nickname = document.getElementById('loginNickname').value.trim();
+  const accountId = document.getElementById('loginAccountId').value.trim();
+  const errEl = document.getElementById('loginError');
+  errEl.style.display = 'none';
+
+  if (!nickname || !accountId) {
+    errEl.textContent = '닉네임과 인스타 아이디를 모두 입력해주세요.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  setBtnLoading('loginBtn', 'loginBtnText', true, '로그인 중');
+  api('login', { nickname: nickname, accountId: accountId })
+    .then(function(res) {
+      setBtnLoading('loginBtn', 'loginBtnText', false, '로그인');
+      if (res.ok) {
+        localStorage.setItem('repost_member', JSON.stringify({ nickname, accountId }));
+      } else {
+        errEl.textContent = res.error;
+        errEl.style.display = 'block';
+      }
+      handleHomeResult(res);
+    })
+    .catch(function(err) {
+      setBtnLoading('loginBtn', 'loginBtnText', false, '로그인');
+      handleServerError(err);
+    });
+}
+
+function setBtnLoading(btnId, textId, loading, label) {
+  const btn = document.getElementById(btnId);
+  const text = document.getElementById(textId);
+  btn.disabled = loading;
+  text.innerHTML = loading ? '<span class="spinner"></span> ' + label : label;
+}
+
+function handleServerError(err) {
+  document.getElementById('loadingCard').classList.add('hidden');
+  document.getElementById('loginCard').classList.remove('hidden');
+  showToast('네트워크 오류가 발생했어요. 잠시 후 다시 시도해주세요.', 'error');
+}
+
+function handleHomeResult(res) {
+  document.getElementById('loadingCard').classList.add('hidden');
+
+  if (!res.ok) {
+    if (res.locked) {
+      document.getElementById('lockedCard').classList.remove('hidden');
+      document.getElementById('phaseLabel').textContent = '계정 잠김';
+    } else {
+      document.getElementById('loginCard').classList.remove('hidden');
+      document.getElementById('loginError').textContent = res.error;
+      document.getElementById('loginError').style.display = 'block';
+    }
+    return;
+  }
+
+  currentMember = res.member;
+  currentState = res;
+  document.getElementById('homeCard').classList.remove('hidden');
+  renderHome(res);
+}
+
+function renderHome(res) {
+  const phaseText = { LINK_OPEN: '참여 가능 시간 (11:00~22:00)', COMPLETE_OPEN: '완료투표 가능 시간', CLOSED: '정산 진행 중 (10:00~11:00)' };
+  document.getElementById('phaseLabel').textContent = phaseText[res.phase] || '';
+  document.getElementById('weeklyCount').textContent = res.weeklyCount.participated + '회';
+
+  let badgeHtml = '';
+  if (currentMember.role === '운영진') badgeHtml = '<span class="badge badge-admin">👑 운영진</span>';
+  else if (res.flow === 'SERVICE') badgeHtml = '<span class="badge badge-service">🛠 봉사대상</span>';
+  else if (currentMember.honor) badgeHtml = '<span class="badge badge-honor">⭐ 명예 (이번 주)</span>';
+  else badgeHtml = '<span class="badge badge-normal">정상 참여중</span>';
+  document.getElementById('statusBadge').innerHTML = badgeHtml;
+
+  renderActionArea(res);
+}
+
+function renderActionArea(res) {
+  const area = document.getElementById('actionArea');
+  const note = document.getElementById('phaseNote');
+  area.innerHTML = '';
+  note.textContent = '';
+
+  if (res.flow === 'SINGLE_COMPLETE') {
+    if (res.hasComplete) {
+      area.innerHTML = '<div class="badge badge-normal" style="width:100%;text-align:center;padding:14px;box-sizing:border-box;">✅ 오늘 등록 완료</div>';
+      return;
+    }
+    if (res.phase !== 'LINK_OPEN') { note.textContent = '지금은 등록 가능 시간이 아니에요 (11:00~22:00)'; return; }
+    area.innerHTML = renderLinkInput('single');
+    return;
+  }
+
+  if (res.flow === 'LINK_THEN_COMPLETE') {
+    if (res.hasComplete) {
+      area.innerHTML = '<div class="badge badge-normal" style="width:100%;text-align:center;padding:14px;box-sizing:border-box;">✅ 오늘 완료</div>';
+      return;
+    }
+    if (!res.hasLinkOrService) {
+      if (res.phase !== 'LINK_OPEN') { note.textContent = '지금은 링크등록 가능 시간이 아니에요 (11:00~22:00)'; return; }
+      area.innerHTML = renderLinkInput('link');
+      return;
+    }
+    if (res.phase !== 'COMPLETE_OPEN') { note.textContent = '링크등록 완료! 22:00 이후 완료투표를 진행해주세요.'; return; }
+    area.innerHTML = '<button class="btn btn-complete" id="actionBtn" onclick="doComplete()"><span id="actionBtnText">참여완료</span></button>';
+    return;
+  }
+
+  if (res.flow === 'SERVICE') {
+    if (res.hasComplete) {
+      area.innerHTML = '<div class="badge badge-normal" style="width:100%;text-align:center;padding:14px;box-sizing:border-box;">✅ 봉사완료</div>';
+      return;
+    }
+    if (!res.hasLinkOrService) {
+      if (res.phase !== 'LINK_OPEN') { note.textContent = '지금은 봉사참여 가능 시간이 아니에요 (11:00~22:00)'; return; }
+      area.innerHTML = '<button class="btn btn-service" id="actionBtn" onclick="doService()"><span id="actionBtnText">봉사참여</span></button>';
+      return;
+    }
+    if (res.phase !== 'COMPLETE_OPEN') { note.textContent = '봉사참여 완료! 22:00 이후 봉사완료를 진행해주세요.'; return; }
+    area.innerHTML = '<button class="btn btn-service" id="actionBtn" onclick="doServiceComplete()"><span id="actionBtnText">봉사완료</span></button>';
+    return;
+  }
+}
+
+function renderLinkInput(mode) {
+  return '<div class="field"><label>리포스트 링크</label>' +
+    '<input type="text" id="linkInput" placeholder="https://www.instagram.com/p/...">' +
+    '<div class="error-text" id="linkError"></div></div>' +
+    '<button class="btn btn-primary" id="actionBtn" onclick="doLinkSubmit(\'' + mode + '\')"><span id="actionBtnText">등록</span></button>';
+}
+
+function doLinkSubmit(mode) {
+  const link = document.getElementById('linkInput').value.trim();
+  const errEl = document.getElementById('linkError');
+  errEl.style.display = 'none';
+  if (!link) {
+    errEl.textContent = '링크를 입력해주세요.';
+    errEl.style.display = 'block';
+    return;
+  }
+  setBtnLoading('actionBtn', 'actionBtnText', true, '등록 중');
+  api('submitLink', { memberId: currentMember.memberId, linkUrl: link })
+    .then(onActionResult)
+    .catch(handleServerError);
+}
+
+function doComplete() {
+  setBtnLoading('actionBtn', 'actionBtnText', true, '처리 중');
+  api('submitComplete', { memberId: currentMember.memberId }).then(onActionResult).catch(handleServerError);
+}
+function doService() {
+  setBtnLoading('actionBtn', 'actionBtnText', true, '처리 중');
+  api('submitService', { memberId: currentMember.memberId }).then(onActionResult).catch(handleServerError);
+}
+function doServiceComplete() {
+  setBtnLoading('actionBtn', 'actionBtnText', true, '처리 중');
+  api('submitServiceComplete', { memberId: currentMember.memberId }).then(onActionResult).catch(handleServerError);
+}
+
+function onActionResult(res) {
+  if (!res.ok) {
+    showToast(res.error, 'error');
+    // 최신 상태로 새로고침 (시간창 등이 바뀌었을 수 있음)
+    refreshHome();
+    return;
+  }
+  showToast(res.message, 'success');
+  refreshHome();
+}
+
+function refreshHome() {
+  api('getCrewHome', { memberId: currentMember.memberId })
+    .then(function(res) { currentState = res; renderHome(res); })
+    .catch(handleServerError);
+}
+
+function showToast(msg, type) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type || '');
+  setTimeout(function() { t.className = 'toast ' + (type || ''); }, 2600);
+}
+</script>
+</body>
+</html>
