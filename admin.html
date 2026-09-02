@@ -123,9 +123,61 @@
     padding: 4px 8px; font-size: 11px; cursor: pointer;
   }
   .account-chip button:hover { color: var(--text); }
+
+  .modal-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex;
+    align-items: center; justify-content: center; z-index: 200; padding: 20px;
+  }
+  .modal-box {
+    background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 24px; width: 100%; max-width: 340px;
+  }
+  .modal-box h3 { margin: 0 0 16px; font-size: 15px; }
+  .modal-box .field { margin-bottom: 14px; }
+  .modal-box label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+  .modal-box input {
+    width: 100%; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px;
+    background: var(--panel2); color: var(--text); font-size: 14px; outline: none;
+  }
+  .modal-box input:focus { border-color: var(--accent); }
+  .modal-actions { display: flex; gap: 8px; margin-top: 18px; }
+  .modal-actions button { flex: 1; padding: 10px; border-radius: 8px; border: none; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .modal-actions .btn-cancel { background: var(--panel2); color: var(--muted); }
+  .modal-actions .btn-save { background: var(--accent); color: #fff; }
+  .modal-actions .btn-danger-confirm { background: var(--danger); color: #fff; }
 </style>
 </head>
 <body>
+
+<!-- 범용 확인 모달 -->
+<div class="modal-overlay hidden" id="confirmModal">
+  <div class="modal-box">
+    <h3 id="confirmModalText">정말 진행할까요?</h3>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeConfirmModal(false)">취소</button>
+      <button class="btn-danger-confirm" onclick="closeConfirmModal(true)">확인</button>
+    </div>
+  </div>
+</div>
+
+<!-- 멤버 수정 모달 -->
+<div class="modal-overlay hidden" id="editModal">
+  <div class="modal-box">
+    <h3>회원 정보 수정</h3>
+    <div class="field">
+      <label>닉네임</label>
+      <input type="text" id="editNickname">
+    </div>
+    <div class="field">
+      <label>인스타 아이디</label>
+      <input type="text" id="editAccountId">
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeEditModal()">취소</button>
+      <button class="btn-save" id="editSaveBtn" onclick="submitEditMember()">저장</button>
+    </div>
+  </div>
+</div>
 
 <!-- ══════ 로그인 화면 (운영진 계정만 통과) ══════ -->
 <div class="login-screen" id="loginScreen">
@@ -186,16 +238,14 @@
       </div>
 
       <div class="panel">
-        <div class="panel-title"><span>미참여자 (오늘 등록 자체를 안 함)</span><button class="btn btn-ghost" onclick="copyList('absentees')">복사</button></div>
-        <div id="absenteesList" class="empty-state">불러오는 중...</div>
-      </div>
-
-      <div class="panel">
         <div class="panel-title">
           <span>⚠️ 경고자 (봉사대상)</span>
           <button class="btn btn-danger" onclick="refreshHome()"><span id="homeRefreshText">새로고침</span></button>
         </div>
-        <div id="warningList" class="empty-state">불러오는 중...</div>
+        <div class="table-scroll"><table>
+          <thead><tr><th>닉네임</th><th>경고</th><th>상태</th></tr></thead>
+          <tbody id="warningList"><tr><td colspan="3" class="empty-state">불러오는 중...</td></tr></tbody>
+        </table></div>
       </div>
 
       <div class="panel">
@@ -273,7 +323,7 @@
           <button class="btn btn-ghost" onclick="loadMembers()"><span id="membersRefreshText">새로고침</span></button>
         </div>
         <div class="table-scroll"><table>
-          <thead><tr><th>닉네임</th><th>계정</th><th>role</th><th>명예</th><th>D</th><th>상태</th><th>동작</th></tr></thead>
+          <thead><tr><th>닉네임</th><th>계정</th><th>role</th><th>명예</th><th>경고</th><th>상태</th><th>동작</th></tr></thead>
           <tbody id="membersTableBody"><tr><td colspan="7" class="empty-state">불러오는 중...</td></tr></tbody>
         </table></div>
       </div>
@@ -456,10 +506,15 @@ function renderHome(res) {
   // No. + 닉네임 + 참여링크 포맷 (참석자/미착륙자 공통 양식)
   document.getElementById('attendeesList').innerHTML = renderNumberedLinkList(res.attendees, '아직 없음');
   document.getElementById('notLandedList').innerHTML = renderNumberedLinkList(res.notLanded, '없음');
-  document.getElementById('absenteesList').innerHTML = res.absentees.length
-    ? res.absentees.map((n, i) => '<div style="padding:4px 0;">' + (i + 1) + '. ' + n + '</div>').join('')
-    : '<div class="empty-state">전원 참여!</div>';
-  document.getElementById('warningList').innerHTML = res.warningList.length ? res.warningList.map(n => '<div style="padding:4px 0;">' + n + '</div>').join('') : '<div class="empty-state">경고자 없음</div>';
+  document.getElementById('warningList').innerHTML = res.warningList.length
+    ? res.warningList.map(function(w) {
+        return '<tr>' +
+          '<td>' + w.nickname + '</td>' +
+          '<td>' + w.warn + '</td>' +
+          '<td>' + (w.locked ? '<span style="color:var(--danger);font-weight:600;">잠금계정</span>' : '봉사중') + '</td>' +
+        '</tr>';
+      }).join('')
+    : '<tr><td colspan="3" class="empty-state">경고자 없음</td></tr>';
 
   window._todayOverview = res; // 복사 시 재사용
 }
@@ -483,8 +538,6 @@ function copyList(which) {
     text = res.attendees.map((item, i) => (i + 1) + '. ' + item.nickname + ' — ' + item.link).join('\n');
   } else if (which === 'notLanded') {
     text = res.notLanded.map((item, i) => (i + 1) + '. ' + item.nickname + ' — ' + item.link).join('\n');
-  } else {
-    text = res.absentees.map((n, i) => (i + 1) + '. ' + n).join('\n');
   }
   if (!text) { showToast('복사할 내용이 없어요.', 'error'); return; }
   navigator.clipboard.writeText(text).then(function() { showToast('복사됐어요.', 'success'); });
@@ -586,13 +639,19 @@ function renderMembers(res) {
       '<td><span id="nick-' + m.memberId + '">' + m.nickname + '</span></td>' +
       '<td><span id="acc-' + m.memberId + '">' + m.accountId + '</span></td>' +
       '<td><select style="width:90px;" onchange="setRole(\'' + m.memberId + '\', this.value)">' + roleOptions + '</select></td>' +
-      '<td><input type="checkbox" ' + (m.honor ? 'checked' : '') + ' onchange="toggleHonor(\'' + m.memberId + '\', this.checked)"></td>' +
+      '<td>' +
+        '<span style="display:inline-flex; align-items:center; gap:5px;">' +
+          '<button class="btn btn-ghost" style="padding:3px 7px; font-size:11px;" onclick="adjustHonor(\'' + m.memberId + '\', -1)">-1</button>' +
+          '<span style="min-width:16px; text-align:center; display:inline-block;">' + m.honor + '</span>' +
+          '<button class="btn btn-ghost" style="padding:3px 7px; font-size:11px;" onclick="adjustHonor(\'' + m.memberId + '\', 1)">+1</button>' +
+        '</span>' +
+      '</td>' +
       '<td>' + m.D + '</td>' +
       '<td>' + m.lockStatus + '</td>' +
       '<td>' +
         '<button class="btn btn-ghost" style="padding:5px 8px;" onclick="editMember(\'' + m.memberId + '\', ' + JSON.stringify(m.nickname) + ', ' + JSON.stringify(m.accountId) + ')">수정</button> ' +
-        '<button class="btn btn-ghost" style="padding:5px 8px;" onclick="adjustD(\'' + m.memberId + '\', 1)">D+1</button> ' +
-        '<button class="btn btn-ghost" style="padding:5px 8px;" onclick="adjustD(\'' + m.memberId + '\', -1)">D-1</button> ' +
+        '<button class="btn btn-ghost" style="padding:5px 8px;" onclick="adjustD(\'' + m.memberId + '\', 1)">경고+1</button> ' +
+        '<button class="btn btn-ghost" style="padding:5px 8px;" onclick="adjustD(\'' + m.memberId + '\', -1)">경고-1</button> ' +
         (m.lockStatus === '잠금'
           ? '<button class="btn btn-success" style="padding:5px 8px;" onclick="unlockMember(\'' + m.memberId + '\')">해제</button>'
           : '<button class="btn btn-danger" style="padding:5px 8px;" onclick="lockMember(\'' + m.memberId + '\')">잠금</button>') +
@@ -601,19 +660,49 @@ function renderMembers(res) {
   }).join('');
 }
 
+let editingMemberId = null;
+let _confirmResolve = null;
+
+function confirmDialog(message) {
+  document.getElementById('confirmModalText').textContent = message;
+  document.getElementById('confirmModal').classList.remove('hidden');
+  return new Promise(function (resolve) { _confirmResolve = resolve; });
+}
+function closeConfirmModal(result) {
+  document.getElementById('confirmModal').classList.add('hidden');
+  if (_confirmResolve) { _confirmResolve(result); _confirmResolve = null; }
+}
+
 function editMember(memberId, curNick, curAcc) {
-  const nickname = prompt('새 닉네임', curNick);
-  if (nickname === null) return; // 취소
-  const accountId = prompt('새 인스타 아이디', curAcc);
-  if (accountId === null) return;
-  if (!nickname.trim() || !accountId.trim()) { showToast('닉네임과 인스타 아이디는 비워둘 수 없어요.', 'error'); return; }
-  api('adminEditMember', { memberId: memberId, nickname: nickname.trim(), accountId: accountId.trim() })
+  editingMemberId = memberId;
+  document.getElementById('editNickname').value = curNick;
+  document.getElementById('editAccountId').value = curAcc;
+  document.getElementById('editModal').classList.remove('hidden');
+}
+
+function closeEditModal() {
+  editingMemberId = null;
+  document.getElementById('editModal').classList.add('hidden');
+}
+
+function submitEditMember() {
+  const nickname = document.getElementById('editNickname').value.trim();
+  const accountId = document.getElementById('editAccountId').value.trim();
+  if (!nickname || !accountId) { showToast('닉네임과 인스타 아이디는 비워둘 수 없어요.', 'error'); return; }
+  const btn = document.getElementById('editSaveBtn');
+  btn.disabled = true; btn.textContent = '저장 중...';
+  api('adminEditMember', { memberId: editingMemberId, nickname: nickname, accountId: accountId })
     .then(function(res) {
+      btn.disabled = false; btn.textContent = '저장';
       if (!res.ok) { showToast(res.error, 'error'); return; }
       showToast('수정됐어요.', 'success');
+      closeEditModal();
       loadMembers();
     })
-    .catch(handleServerError);
+    .catch(function(err) {
+      btn.disabled = false; btn.textContent = '저장';
+      handleServerError(err);
+    });
 }
 
 function setRole(memberId, role) {
@@ -621,25 +710,27 @@ function setRole(memberId, role) {
     .then(function(res) { if (res.ok) showToast('역할 변경됨', 'success'); loadMembers(); })
     .catch(handleServerError);
 }
-function toggleHonor(memberId, checked) {
-  api('adminToggleHonor', { memberId: memberId, honor: checked })
-    .then(function(res) { if (res.ok) showToast(checked ? '명예 부여됨' : '명예 해제됨', 'success'); loadMembers(); })
+function adjustHonor(memberId, delta) {
+  api('adminAdjustHonor', { memberId: memberId, delta: delta, reason: '운영진 수동조정' })
+    .then(function(res) { if (res.ok) showToast('명예 ' + (delta > 0 ? '+1' : '-1') + ' 반영됨', 'success'); loadMembers(); })
     .catch(handleServerError);
 }
 function adjustD(memberId, delta) {
-  api('adminAdjustD', { memberId: memberId, delta: delta, reason: '운영진 수동조정' })
-    .then(function(res) { showToast('D값 조정됨', 'success'); loadMembers(); })
+  api('adminAdjustD', { memberId: memberId, delta: delta, reason: '운영진 수동조정(경고)' })
+    .then(function(res) { showToast('경고 ' + (delta > 0 ? '+1' : '-1') + ' 반영됨', 'success'); loadMembers(); })
     .catch(handleServerError);
 }
 function lockMember(memberId) {
-  if (!confirm('정말 잠금 처리할까요?')) return;
-  api('adminLockMember', { memberId: memberId })
-    .then(function(res) { showToast('잠금 처리됨', 'success'); loadMembers(); })
-    .catch(handleServerError);
+  confirmDialog('정말 잠금 처리할까요?').then(function (ok) {
+    if (!ok) return;
+    api('adminLockMember', { memberId: memberId })
+      .then(function(res) { showToast('잠금 처리됨', 'success'); loadMembers(); })
+      .catch(handleServerError);
+  });
 }
 function unlockMember(memberId) {
   api('adminUnlockMember', { memberId: memberId })
-    .then(function(res) { showToast('잠금 해제됨 (D=0으로 초기화)', 'success'); loadMembers(); })
+    .then(function(res) { showToast('잠금 해제됨 (경고=0으로 초기화)', 'success'); loadMembers(); })
     .catch(handleServerError);
 }
 
