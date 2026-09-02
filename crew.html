@@ -331,7 +331,7 @@ function renderHome(res) {
   let pills = '<span class="pill pill-week">이번 주 ' + res.weeklyCount.participated + '회</span>';
   if (currentMember.role === '운영진') pills += '<span class="pill pill-honor">👑 운영진</span>';
   else if (res.flow === 'SERVICE') pills += '<span class="pill pill-service">🛠 봉사대상</span>';
-  else if (currentMember.honor) pills += '<span class="pill pill-honor">⭐ 명예</span>';
+  else if (currentMember.honor) pills += '<span class="pill pill-honor">⭐ 명예 ' + currentMember.honor + '개</span>';
   document.getElementById('accountPills').innerHTML = pills;
 
   // 오늘 내가 등록한 링크 노출
