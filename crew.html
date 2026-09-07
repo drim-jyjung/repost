@@ -53,6 +53,7 @@
   .btn-service { background: linear-gradient(135deg, var(--ig-orange), #FCAF45); }
   .btn-complete { background: var(--success); }
   .btn-secondary { background: #F5F5F5; color: var(--text); }
+  .btn-honor { background: linear-gradient(135deg, var(--ig-pink), var(--ig-orange)); }
 
   .spinner {
     width: 16px; height: 16px; border: 2.5px solid rgba(255,255,255,0.4); border-top-color: #fff;
@@ -360,7 +361,28 @@ function renderActionArea(res) {
       return;
     }
     if (res.phase !== 'LINK_OPEN') { note.textContent = '지금은 등록 가능 시간이 아니에요 (11:00~22:00)'; return; }
-    area.innerHTML = renderLinkInput('single');
+    area.innerHTML = renderLinkInput();
+    return;
+  }
+
+  if (res.flow === 'HONOR_CHOICE') {
+    if (res.hasComplete) {
+      area.innerHTML = '<div class="badge badge-normal" style="width:100%;text-align:center;padding:14px;box-sizing:border-box;">✅ 오늘 완료</div>';
+      return;
+    }
+    if (!res.hasLinkOrService) {
+      if (res.phase !== 'LINK_OPEN') { note.textContent = '지금은 참여 가능 시간이 아니에요 (11:00~22:00)'; return; }
+      area.innerHTML = renderHonorChoiceInput(currentMember.honor);
+      return;
+    }
+    // 등록만 하고 완료 전인 경우(=일반참여를 선택했던 경우)는 일반 흐름과 동일하게 대기
+    if (res.phase !== 'COMPLETE_OPEN') {
+      area.innerHTML = renderDisabledComplete('참여완료');
+      note.textContent = '링크등록 완료! 22:00부터 완료투표 버튼이 자동으로 활성화돼요.';
+      startPolling();
+      return;
+    }
+    area.innerHTML = '<button class="btn btn-complete" id="actionBtn" onclick="doComplete()"><span id="actionBtnText">참여완료</span></button>';
     return;
   }
 
@@ -371,7 +393,7 @@ function renderActionArea(res) {
     }
     if (!res.hasLinkOrService) {
       if (res.phase !== 'LINK_OPEN') { note.textContent = '지금은 링크등록 가능 시간이 아니에요 (11:00~22:00)'; return; }
-      area.innerHTML = renderLinkInput('link');
+      area.innerHTML = renderLinkInput();
       return;
     }
     if (res.phase !== 'COMPLETE_OPEN') {
@@ -409,14 +431,25 @@ function renderDisabledComplete(label) {
   return '<button class="btn btn-complete" disabled style="opacity:0.45;cursor:not-allowed;">' + label + '</button>';
 }
 
-function renderLinkInput(mode) {
+function renderLinkInput() {
   return '<div class="field"><label>리포스트 링크</label>' +
     '<input type="text" id="linkInput" placeholder="https://www.instagram.com/p/...">' +
     '<div class="error-text" id="linkError"></div></div>' +
-    '<button class="btn btn-primary" id="actionBtn" onclick="doLinkSubmit(\'' + mode + '\')"><span id="actionBtnText">등록</span></button>';
+    '<button class="btn btn-primary" id="actionBtn" onclick="doLinkSubmit(false)"><span id="actionBtnText">등록</span></button>';
 }
 
-function doLinkSubmit(mode) {
+function renderHonorChoiceInput(honorCount) {
+  return '<div class="field"><label>리포스트 링크</label>' +
+    '<input type="text" id="linkInput" placeholder="https://www.instagram.com/p/...">' +
+    '<div class="error-text" id="linkError"></div></div>' +
+    '<div style="display:flex; gap:8px;">' +
+      '<button class="btn btn-secondary" id="actionBtnNormal" style="flex:1;" onclick="doLinkSubmit(false)">일반 참여</button>' +
+      '<button class="btn btn-honor" id="actionBtnHonor" style="flex:1;" onclick="doLinkSubmit(true)">명예 참여 (' + honorCount + '개)</button>' +
+    '</div>' +
+    '<div class="center-note" style="margin-top:8px;">명예 참여를 선택하면 등록과 동시에 완료 처리되고 명예 1개가 소모돼요.</div>';
+}
+
+function doLinkSubmit(useHonor) {
   const link = document.getElementById('linkInput').value.trim();
   const errEl = document.getElementById('linkError');
   errEl.style.display = 'none';
@@ -425,8 +458,12 @@ function doLinkSubmit(mode) {
     errEl.style.display = 'block';
     return;
   }
-  setBtnLoading('actionBtn', 'actionBtnText', true, '등록 중');
-  api('submitLink', { memberId: currentMember.memberId, linkUrl: link })
+  const btnId = useHonor ? 'actionBtnHonor' : (document.getElementById('actionBtnNormal') ? 'actionBtnNormal' : 'actionBtn');
+  const btn = document.getElementById(btnId);
+  if (btn) { btn.disabled = true; btn.dataset.origText = btn.textContent; btn.innerHTML = '<span class="spinner"></span>'; }
+  const otherBtn = document.getElementById(useHonor ? 'actionBtnNormal' : 'actionBtnHonor');
+  if (otherBtn) otherBtn.disabled = true;
+  api('submitLink', { memberId: currentMember.memberId, linkUrl: link, useHonor: !!useHonor })
     .then(onActionResult)
     .catch(handleServerError);
 }
