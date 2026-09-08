@@ -494,6 +494,10 @@ function refreshHome() {
   loadClosureReport();
 }
 
+function nickAcc(nickname, accountId) {
+  return nickname + (accountId ? ' @' + accountId : '');
+}
+
 function renderHome(res) {
   document.getElementById('homeRefreshText').textContent = '새로고침';
   if (!res.ok) { showToast('현황을 불러오지 못했어요.', 'error'); return; }
@@ -505,13 +509,13 @@ function renderHome(res) {
     statCard('미착륙', res.notLanded.length) +
     statCard('경고자', res.warningList.length);
 
-  // No. + 닉네임 + 참여링크 포맷 (참석자/미착륙자 공통 양식)
+  // No. + 닉네임 @계정 + 참여링크 포맷 (참석자/미착륙자 공통 양식)
   document.getElementById('attendeesList').innerHTML = renderNumberedLinkList(res.attendees, '아직 없음');
   document.getElementById('notLandedList').innerHTML = renderNumberedLinkList(res.notLanded, '없음');
   document.getElementById('warningList').innerHTML = res.warningList.length
     ? res.warningList.map(function(w) {
         return '<tr>' +
-          '<td>' + w.nickname + '</td>' +
+          '<td>' + nickAcc(w.nickname, w.accountId) + '</td>' +
           '<td>' + w.warn + '</td>' +
           '<td>' + (w.locked ? '<span style="color:var(--danger);font-weight:600;">잠금계정</span>' : '봉사중') + '</td>' +
         '</tr>';
@@ -524,7 +528,7 @@ function renderHome(res) {
 function renderNumberedLinkList(list, emptyText) {
   if (!list.length) return '<div class="empty-state">' + emptyText + '</div>';
   return list.map(function(item, i) {
-    return '<div style="padding:4px 0;">' + (i + 1) + '. ' + item.nickname + ' — ' + item.link + '</div>';
+    return '<div style="padding:4px 0;">' + (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' — ' + item.link + '</div>';
   }).join('');
 }
 
@@ -535,14 +539,16 @@ function statCard(label, value) {
 function copyList(which) {
   const res = window._todayOverview;
   if (!res) { showToast('먼저 데이터를 불러와주세요.', 'error'); return; }
-  let text = '';
+  let title = '', body = '';
   if (which === 'attendees') {
-    text = res.attendees.map((item, i) => (i + 1) + '. ' + item.nickname + ' — ' + item.link).join('\n');
+    title = '참석자 (완료) — ' + res.serviceDate;
+    body = res.attendees.map((item, i) => (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' — ' + item.link).join('\n');
   } else if (which === 'notLanded') {
-    text = res.notLanded.map((item, i) => (i + 1) + '. ' + item.nickname + ' — ' + item.link).join('\n');
+    title = '미착륙자 (등록만, 미완료) — ' + res.serviceDate;
+    body = res.notLanded.map((item, i) => (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' — ' + item.link).join('\n');
   }
-  if (!text) { showToast('복사할 내용이 없어요.', 'error'); return; }
-  navigator.clipboard.writeText(text).then(function() { showToast('복사됐어요.', 'success'); });
+  if (!body) { showToast('복사할 내용이 없어요.', 'error'); return; }
+  navigator.clipboard.writeText(title + '\n' + body).then(function() { showToast('복사됐어요.', 'success'); });
 }
 
 // ─── 지난주 마감 리포트 (경고자/명예자) ───
@@ -564,10 +570,10 @@ function renderClosureReport(res) {
   }
   document.getElementById('closureTabLabel').textContent = res.tabName + ' 마감 기준';
   document.getElementById('closureWarnList').innerHTML = res.warnList.length
-    ? res.warnList.map((n, i) => '<div style="padding:4px 0;">' + (i + 1) + '. ' + n + '</div>').join('')
+    ? res.warnList.map((w, i) => '<div style="padding:4px 0;">' + (i + 1) + '. ' + nickAcc(w.nickname, w.accountId) + '</div>').join('')
     : '<div class="empty-state">경고자 없음</div>';
   document.getElementById('closureHonorList').innerHTML = res.honorList.length
-    ? res.honorList.map((n, i) => '<div style="padding:4px 0;">' + (i + 1) + '. ' + n + '</div>').join('')
+    ? res.honorList.map((w, i) => '<div style="padding:4px 0;">' + (i + 1) + '. ' + nickAcc(w.nickname, w.accountId) + '</div>').join('')
     : '<div class="empty-state">해당자 없음</div>';
 }
 
@@ -576,8 +582,9 @@ function copyClosureList(which) {
   if (!res || !res.tabName) { showToast('복사할 내용이 없어요.', 'error'); return; }
   const list = which === 'warn' ? res.warnList : res.honorList;
   if (!list.length) { showToast('복사할 내용이 없어요.', 'error'); return; }
-  const text = list.map((n, i) => (i + 1) + '. ' + n).join('\n');
-  navigator.clipboard.writeText(text).then(function() { showToast('복사됐어요.', 'success'); });
+  const title = (which === 'warn' ? '경고자 (주간 미달) — ' : '명예 (풀참·수동부여) — ') + res.tabName;
+  const body = list.map((w, i) => (i + 1) + '. ' + nickAcc(w.nickname, w.accountId)).join('\n');
+  navigator.clipboard.writeText(title + '\n' + body).then(function() { showToast('복사됐어요.', 'success'); });
 }
 
 // ─── 링크확인 ───
@@ -593,7 +600,7 @@ function renderSuspiciousLinks(res) {
     return;
   }
   tbody.innerHTML = res.bad.map(function(b) {
-    return '<tr class="bad"><td>' + b.nickname + '</td><td style="word-break:break-all;">' + b.url + '</td></tr>';
+    return '<tr class="bad"><td>' + nickAcc(b.nickname, b.accountId) + '</td><td style="word-break:break-all;">' + b.url + '</td></tr>';
   }).join('');
 }
 
