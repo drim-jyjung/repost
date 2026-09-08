@@ -654,6 +654,10 @@ function renderMembers(res) {
   tbody.innerHTML = res.members.map(function(m) {
     const rowClass = m.lockStatus === '잠금' ? ' class="locked"' : '';
     const roleOptions = ['일반', '운영진'].map(r => '<option value="' + r + '"' + (r === m.role ? ' selected' : '') + '>' + r + '</option>').join('');
+    // Home의 경고자 표와 같은 기준으로 상태 라벨 통일: 잠금 > 봉사대상(D≥1) > 정상
+    const statusLabel = m.lockStatus === '잠금'
+      ? '<span style="color:var(--danger);font-weight:600;">잠금</span>'
+      : (m.D >= 1 ? '<span style="color:#F5A623;font-weight:600;">봉사대상</span>' : '정상');
     return '<tr' + rowClass + '>' +
       '<td><span id="nick-' + m.memberId + '">' + m.nickname + '</span></td>' +
       '<td><span id="acc-' + m.memberId + '">' + m.accountId + '</span></td>' +
@@ -666,7 +670,7 @@ function renderMembers(res) {
         '</span>' +
       '</td>' +
       '<td>' + m.D + '</td>' +
-      '<td>' + m.lockStatus + '</td>' +
+      '<td>' + statusLabel + '</td>' +
       '<td>' +
         '<button class="btn btn-ghost" style="padding:5px 8px;" data-member-id="' + escapeAttr(m.memberId) + '" data-nick="' + escapeAttr(m.nickname) + '" data-acc="' + escapeAttr(m.accountId) + '" onclick="editMemberFromBtn(this)">수정</button> ' +
         '<button class="btn btn-ghost" style="padding:5px 8px;" onclick="adjustD(\'' + m.memberId + '\', 1)">경고+1</button> ' +
@@ -746,20 +750,32 @@ function adjustHonor(memberId, delta) {
 }
 function adjustD(memberId, delta) {
   api('adminAdjustD', { memberId: memberId, delta: delta, reason: '운영진 수동조정(경고)' })
-    .then(function(res) { showToast('경고 ' + (delta > 0 ? '+1' : '-1') + ' 반영됨', 'success'); loadMembers(); })
+    .then(function(res) {
+      if (res.ok) showToast('경고 ' + (delta > 0 ? '+1' : '-1') + ' 반영됨', 'success');
+      else showToast(res.error || '경고 조정에 실패했어요.', 'error');
+      loadMembers();
+    })
     .catch(handleServerError);
 }
 function lockMember(memberId) {
   confirmDialog('정말 잠금 처리할까요?').then(function (ok) {
     if (!ok) return;
     api('adminLockMember', { memberId: memberId })
-      .then(function(res) { showToast('잠금 처리됨', 'success'); loadMembers(); })
+      .then(function(res) {
+        if (res.ok) showToast('잠금 처리됨', 'success');
+        else showToast(res.error || '잠금 처리에 실패했어요.', 'error');
+        loadMembers();
+      })
       .catch(handleServerError);
   });
 }
 function unlockMember(memberId) {
   api('adminUnlockMember', { memberId: memberId })
-    .then(function(res) { showToast('잠금 해제됨 (경고 개수는 유지, 6일 타이머 재시작)', 'success'); loadMembers(); })
+    .then(function(res) {
+      if (res.ok) showToast('잠금 해제됨 (경고 개수는 유지, 6일 타이머 재시작)', 'success');
+      else showToast(res.error || '잠금 해제에 실패했어요.', 'error');
+      loadMembers();
+    })
     .catch(handleServerError);
 }
 
