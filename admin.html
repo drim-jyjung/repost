@@ -208,6 +208,8 @@
       <button onclick="doAdminLogout()">로그아웃</button>
     </div>
     <div class="nav-item active" onclick="switchPage('home')" data-page="home"><span class="icon">🏠</span><span class="label">홈</span></div>
+    <div class="nav-item" onclick="switchPage('closure')" data-page="closure"><span class="icon">📋</span><span class="label">마감리포트</span></div>
+    <div class="nav-item" onclick="switchPage('links')" data-page="links"><span class="icon">🔗</span><span class="label">링크확인</span></div>
     <div class="nav-item" onclick="switchPage('weekly')" data-page="weekly"><span class="icon">📊</span><span class="label">주간현황</span></div>
     <div class="nav-item" onclick="switchPage('members')" data-page="members"><span class="icon">👥</span><span class="label">멤버</span></div>
   </div>
@@ -247,13 +249,17 @@
           <tbody id="warningList"><tr><td colspan="3" class="empty-state">불러오는 중...</td></tr></tbody>
         </table></div>
       </div>
+    </div>
 
+    <!-- ══════ 마감리포트 (지난주 경고자/명예자) — 클릭 시에만 로드 ══════ -->
+    <div class="page" id="page-closure">
+      <h2>지난주 마감 리포트</h2>
       <div class="panel">
         <div class="panel-title">
-          <span>📋 지난주 마감 리포트</span>
+          <span>📋 결산</span>
           <button class="btn btn-ghost" onclick="loadClosureReport()"><span id="closureRefreshText">새로고침</span></button>
         </div>
-        <div class="sub" id="closureTabLabel" style="margin-bottom:8px;"></div>
+        <div class="sub" id="closureTabLabel" style="margin-bottom:8px;">불러오는 중...</div>
         <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
           <div>
             <div class="panel-title" style="padding:0 0 6px;"><span>경고자 (주간 미달)</span><button class="btn btn-ghost" onclick="copyClosureList('warn')">복사</button></div>
@@ -265,17 +271,21 @@
           </div>
         </div>
       </div>
+    </div>
 
+    <!-- ══════ 링크확인 (형식 위반) — 클릭 시에만 로드 ══════ -->
+    <div class="page" id="page-links">
+      <h2>링크확인</h2>
       <div class="panel">
         <div class="panel-title">
-          <span>🔗 링크확인 — 형식 위반 (관리자 전용, 크루 비노출)</span>
+          <span>🔗 형식 위반 (관리자 전용, 크루 비노출)</span>
           <button class="btn btn-ghost" onclick="loadSuspiciousLinks()"><span id="linksRefreshText">새로고침</span></button>
         </div>
         <div class="table-scroll"><table>
           <thead><tr><th>닉네임</th><th>URL</th></tr></thead>
           <tbody id="suspiciousTableBody"><tr><td colspan="2" class="empty-state">불러오는 중...</td></tr></tbody>
         </table></div>
-        <p style="font-size:12px; color:var(--muted); margin-top:10px;">정상 형태: <code>https://www.instagram.com/p/{게시물ID}/</code></p>
+        <p style="font-size:12px; color:var(--muted); margin-top:10px;">정상 형태: <code>https://www.instagram.com/p/{게시물ID}/</code> 또는 <code>https://www.instagram.com/reel/{게시물ID}/</code></p>
       </div>
     </div>
 
@@ -423,8 +433,7 @@ function enterAdmin(member) {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('mainLayout').classList.remove('hidden');
   applyInitialSidebarState();
-  refreshHome();
-  loadSuspiciousLinks();
+  refreshHome(); // 홈만 즉시 로드. 마감리포트/링크확인/주간현황/멤버는 해당 메뉴 클릭할 때만 로드
 }
 
 function doAdminLogout() {
@@ -468,7 +477,9 @@ function switchPage(name) {
   document.querySelector('.nav-item[data-page="' + name + '"]').classList.add('active');
   if (isNarrow()) document.getElementById('sidebar').classList.remove('expanded'); // 좁은 화면에선 메뉴 선택 후 자동으로 접힘
   if (name === 'members') loadMembers();
-  if (name === 'weekly') { loadWeeklyTable(); }
+  if (name === 'weekly') loadWeeklyTable();
+  if (name === 'closure') loadClosureReport();
+  if (name === 'links') loadSuspiciousLinks();
 }
 
 // 참고: 예전엔 여기서 바로 refreshHome()/loadSuspiciousLinks()를 호출했지만
@@ -491,7 +502,6 @@ function refreshHome() {
   const btn = document.getElementById('homeRefreshText');
   if (btn) btn.innerHTML = '<span class="spinner"></span>';
   api('adminGetTodayOverview').then(renderHome).catch(function(e) { handleServerError(e); if (btn) btn.textContent = '새로고침'; });
-  loadClosureReport();
 }
 
 function nickAcc(nickname, accountId) {
