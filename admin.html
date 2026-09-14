@@ -179,6 +179,29 @@
   </div>
 </div>
 
+<!-- 관리자 대리 참여처리 모달 — 크루가 못 했을 때 시트를 직접 안 건드리고 앱에서 정식으로 처리 -->
+<div class="modal-overlay hidden" id="forceModal">
+  <div class="modal-box">
+    <h3 id="forceModalTitle">참여 대리처리</h3>
+    <div class="field">
+      <label>날짜 (서비스데이 기준)</label>
+      <input type="date" id="forceDate">
+    </div>
+    <div class="field">
+      <label>트랙</label>
+      <select id="forceTrack" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--panel2); color:var(--text); font-size:14px;">
+        <option value="normal">일반참여 (등록+완료)</option>
+        <option value="honor">명예참여 (보유 1개 소모)</option>
+        <option value="service">봉사완료 (경고 -1)</option>
+      </select>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeForceModal()">취소</button>
+      <button class="btn-save" id="forceSaveBtn" onclick="submitForceParticipate()">처리</button>
+    </div>
+  </div>
+</div>
+
 <!-- ══════ 로그인 화면 (운영진 계정만 통과) ══════ -->
 <div class="login-screen" id="loginScreen">
   <div class="login-box">
@@ -276,16 +299,20 @@
     <!-- ══════ 링크확인 (형식 위반) — 클릭 시에만 로드 ══════ -->
     <div class="page" id="page-links">
       <h2>링크확인</h2>
+      <div class="sub" id="linksDateLabel">불러오는 중...</div>
       <div class="panel">
         <div class="panel-title">
           <span>🔗 형식 위반 (관리자 전용, 크루 비노출)</span>
           <button class="btn btn-ghost" onclick="loadSuspiciousLinks()"><span id="linksRefreshText">새로고침</span></button>
         </div>
         <div class="table-scroll"><table>
-          <thead><tr><th>닉네임</th><th>URL</th></tr></thead>
-          <tbody id="suspiciousTableBody"><tr><td colspan="2" class="empty-state">불러오는 중...</td></tr></tbody>
+          <thead><tr><th>닉네임</th><th>URL</th><th>등록시각</th></tr></thead>
+          <tbody id="suspiciousTableBody"><tr><td colspan="3" class="empty-state">불러오는 중...</td></tr></tbody>
         </table></div>
-        <p style="font-size:12px; color:var(--muted); margin-top:10px;">정상 형태: <code>https://www.instagram.com/p/{게시물ID}/</code> 또는 <code>https://www.instagram.com/reel/{게시물ID}/</code></p>
+        <p style="font-size:12px; color:var(--muted); margin-top:10px;">
+          정상 형태: <code>https://www.instagram.com/p/{게시물ID}/</code> 또는 <code>https://www.instagram.com/reel/{게시물ID}/</code><br>
+          현재 진행 중인 참여 사이클(11:00~익일 10:00) 기준으로만 표시돼요. 지난 사이클 건은 여기서 더 이상 안 보입니다.
+        </p>
       </div>
     </div>
 
@@ -604,13 +631,15 @@ function loadSuspiciousLinks() {
 }
 function renderSuspiciousLinks(res) {
   document.getElementById('linksRefreshText').textContent = '새로고침';
+  const label = document.getElementById('linksDateLabel');
+  if (label) label.textContent = res.serviceDate ? (res.serviceDate + ' 사이클 기준') : '';
   const tbody = document.getElementById('suspiciousTableBody');
   if (!res.ok || !res.bad.length) {
-    tbody.innerHTML = '<tr><td colspan="2" class="empty-state">위반 링크 없음</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="3" class="empty-state">위반 링크 없음</td></tr>';
     return;
   }
   tbody.innerHTML = res.bad.map(function(b) {
-    return '<tr class="bad"><td>' + nickAcc(b.nickname, b.accountId) + '</td><td style="word-break:break-all;">' + b.url + '</td></tr>';
+    return '<tr class="bad"><td>' + nickAcc(b.nickname, b.accountId) + '</td><td style="word-break:break-all;">' + b.url + '</td><td style="white-space:nowrap;">' + b.createdAt + '</td></tr>';
   }).join('');
 }
 
@@ -654,10 +683,10 @@ function renderMembers(res) {
   tbody.innerHTML = res.members.map(function(m) {
     const rowClass = m.lockStatus === '잠금' ? ' class="locked"' : '';
     const roleOptions = ['일반', '운영진'].map(r => '<option value="' + r + '"' + (r === m.role ? ' selected' : '') + '>' + r + '</option>').join('');
-    // Home의 경고자 표와 같은 기준으로 상태 라벨 통일: 잠금 > 봉사대상(D≥1) > 정상
+    // Home의 경고자 표와 같은 기준으로 상태 라벨 통일: 잠금 > 봉사대상(D≥1, 운영진 제외) > 정상
     const statusLabel = m.lockStatus === '잠금'
       ? '<span style="color:var(--danger);font-weight:600;">잠금</span>'
-      : (m.D >= 1 ? '<span style="color:#F5A623;font-weight:600;">봉사대상</span>' : '정상');
+      : (m.D >= 1 && m.role !== '운영진' ? '<span style="color:#F5A623;font-weight:600;">봉사대상</span>' : '정상');
     return '<tr' + rowClass + '>' +
       '<td><span id="nick-' + m.memberId + '">' + m.nickname + '</span></td>' +
       '<td><span id="acc-' + m.memberId + '">' + m.accountId + '</span></td>' +
@@ -673,6 +702,7 @@ function renderMembers(res) {
       '<td>' + statusLabel + '</td>' +
       '<td>' +
         '<button class="btn btn-ghost" style="padding:5px 8px;" data-member-id="' + escapeAttr(m.memberId) + '" data-nick="' + escapeAttr(m.nickname) + '" data-acc="' + escapeAttr(m.accountId) + '" onclick="editMemberFromBtn(this)">수정</button> ' +
+        '<button class="btn btn-ghost" style="padding:5px 8px;" data-member-id="' + escapeAttr(m.memberId) + '" data-nick="' + escapeAttr(m.nickname) + '" onclick="openForceModalFromBtn(this)">참여처리</button> ' +
         '<button class="btn btn-ghost" style="padding:5px 8px;" onclick="adjustD(\'' + m.memberId + '\', 1)">경고+1</button> ' +
         '<button class="btn btn-ghost" style="padding:5px 8px;" onclick="adjustD(\'' + m.memberId + '\', -1)">경고-1</button> ' +
         (m.lockStatus === '잠금'
@@ -693,6 +723,41 @@ function escapeAttr(s) {
 }
 function editMemberFromBtn(btn) {
   editMember(btn.dataset.memberId, btn.dataset.nick, btn.dataset.acc);
+}
+
+let forcingMemberId = null;
+function openForceModalFromBtn(btn) {
+  openForceModal(btn.dataset.memberId, btn.dataset.nick);
+}
+function openForceModal(memberId, nick) {
+  forcingMemberId = memberId;
+  document.getElementById('forceModalTitle').textContent = nick + ' — 참여 대리처리';
+  document.getElementById('forceDate').value = new Date().toISOString().slice(0, 10);
+  document.getElementById('forceTrack').value = 'normal';
+  document.getElementById('forceModal').classList.remove('hidden');
+}
+function closeForceModal() {
+  forcingMemberId = null;
+  document.getElementById('forceModal').classList.add('hidden');
+}
+function submitForceParticipate() {
+  const date = document.getElementById('forceDate').value;
+  const track = document.getElementById('forceTrack').value;
+  if (!date) { showToast('날짜를 선택해주세요.', 'error'); return; }
+  const btn = document.getElementById('forceSaveBtn');
+  btn.disabled = true; btn.textContent = '처리 중...';
+  api('adminForceParticipate', { memberId: forcingMemberId, serviceDate: date, track: track })
+    .then(function(res) {
+      btn.disabled = false; btn.textContent = '처리';
+      if (!res.ok) { showToast(res.error, 'error'); return; }
+      showToast(res.message, 'success');
+      closeForceModal();
+      loadMembers();
+    })
+    .catch(function(err) {
+      btn.disabled = false; btn.textContent = '처리';
+      handleServerError(err);
+    });
 }
 let _confirmResolve = null;
 
