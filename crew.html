@@ -449,15 +449,38 @@ function renderHonorChoiceInput(honorCount) {
     '<div class="center-note" style="margin-top:8px;">명예 참여를 선택하면 등록과 동시에 완료 처리되고 명예 1개가 소모돼요.</div>';
 }
 
+// 서버(sanitizeAndValidateLink_)와 동일한 규칙을 미리 클라이언트에서도 체크해서
+// 즉시 피드백을 줌 (round-trip 없이). 최종 판정은 항상 서버가 다시 함.
+function normalizeAndValidateLinkClient_(rawUrl) {
+  let url = String(rawUrl || '').trim();
+  if (!url) return { ok: false, error: '링크를 입력해주세요.' };
+  url = url.replace(/^http:\/\//i, 'https://');
+  url = url.replace(/^https:\/\/instagram\.com\//i, 'https://www.instagram.com/');
+  url = url.replace(/\/reel\//i, '/p/');
+  url = url.replace(/\?.*$/, '');
+  const pattern = /^https:\/\/www\.instagram\.com\/p\/[A-Za-z0-9_-]+\/?$/i;
+  if (!pattern.test(url)) {
+    return { ok: false, error: '인스타그램 게시물 링크만 등록할 수 있어요. (예: https://www.instagram.com/p/ABC123/)' };
+  }
+  return { ok: true, url: url };
+}
+
 function doLinkSubmit(useHonor) {
-  const link = document.getElementById('linkInput').value.trim();
+  const rawLink = document.getElementById('linkInput').value.trim();
   const errEl = document.getElementById('linkError');
   errEl.style.display = 'none';
-  if (!link) {
+  if (!rawLink) {
     errEl.textContent = '링크를 입력해주세요.';
     errEl.style.display = 'block';
     return;
   }
+  const check = normalizeAndValidateLinkClient_(rawLink);
+  if (!check.ok) {
+    errEl.textContent = check.error;
+    errEl.style.display = 'block';
+    return;
+  }
+  const link = check.url;
   const btnId = useHonor ? 'actionBtnHonor' : (document.getElementById('actionBtnNormal') ? 'actionBtnNormal' : 'actionBtn');
   const btn = document.getElementById(btnId);
   if (btn) { btn.disabled = true; btn.dataset.origText = btn.textContent; btn.innerHTML = '<span class="spinner"></span>'; }
