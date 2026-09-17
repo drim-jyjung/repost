@@ -189,11 +189,15 @@
     </div>
     <div class="field">
       <label>트랙</label>
-      <select id="forceTrack" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--panel2); color:var(--text); font-size:14px;">
+      <select id="forceTrack" onchange="updateForceUrlVisibility()" style="width:100%; padding:10px 12px; border:1px solid var(--border); border-radius:8px; background:var(--panel2); color:var(--text); font-size:14px;">
         <option value="normal">일반참여 (등록+완료)</option>
         <option value="honor">명예참여 (보유 1개 소모)</option>
         <option value="service">봉사완료 (경고 -1)</option>
       </select>
+    </div>
+    <div class="field" id="forceUrlField">
+      <label>리포스트 URL (선택 — 안 넣으면 대리처리 표시만 남음)</label>
+      <input type="text" id="forceUrl" placeholder="https://www.instagram.com/p/...">
     </div>
     <div class="modal-actions">
       <button class="btn-cancel" onclick="closeForceModal()">취소</button>
@@ -300,6 +304,21 @@
     <div class="page" id="page-links">
       <h2>링크확인</h2>
       <div class="sub" id="linksDateLabel">불러오는 중...</div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <span>⭐ 우수참여 (1회성 외부 게스트)</span>
+          <button class="btn btn-accent" onclick="openGuestModal()">+ 우수멤버 등록</button>
+        </div>
+        <p style="font-size:12px; color:var(--muted); margin:0 0 12px;">
+          외부인을 1회성으로 참여시킬 때 사용해요. 등록 즉시 자동 참석+완료 처리되고, 경고/명예 등 정식 회원 시스템과는 무관합니다.
+        </p>
+        <div class="table-scroll"><table>
+          <thead><tr><th>닉네임</th><th>URL</th><th>등록시각</th></tr></thead>
+          <tbody id="guestTableBody"><tr><td colspan="3" class="empty-state">불러오는 중...</td></tr></tbody>
+        </table></div>
+      </div>
+
       <div class="panel">
         <div class="panel-title">
           <span>🔗 형식 위반 (관리자 전용, 크루 비노출)</span>
@@ -313,6 +332,25 @@
           정상 형태: <code>https://www.instagram.com/p/{게시물ID}/</code> 또는 <code>https://www.instagram.com/reel/{게시물ID}/</code><br>
           현재 진행 중인 참여 사이클(11:00~익일 10:00) 기준으로만 표시돼요. 지난 사이클 건은 여기서 더 이상 안 보입니다.
         </p>
+      </div>
+    </div>
+
+    <!-- 우수멤버(1회성 게스트) 등록 모달 -->
+    <div class="modal-overlay hidden" id="guestModal">
+      <div class="modal-box">
+        <h3>우수멤버 등록 (1회성)</h3>
+        <div class="field">
+          <label>닉네임 (표시용 이름)</label>
+          <input type="text" id="guestNickname" placeholder="예: 게스트_홍길동">
+        </div>
+        <div class="field">
+          <label>리포스트 URL</label>
+          <input type="text" id="guestUrl" placeholder="https://www.instagram.com/p/...">
+        </div>
+        <div class="modal-actions">
+          <button class="btn-cancel" onclick="closeGuestModal()">취소</button>
+          <button class="btn-save" id="guestSaveBtn" onclick="submitGuestLink()">등록</button>
+        </div>
       </div>
     </div>
 
@@ -506,7 +544,7 @@ function switchPage(name) {
   if (name === 'members') loadMembers();
   if (name === 'weekly') loadWeeklyTable();
   if (name === 'closure') loadClosureReport();
-  if (name === 'links') loadSuspiciousLinks();
+  if (name === 'links') { loadSuspiciousLinks(); loadGuestLinks(); }
 }
 
 // 참고: 예전엔 여기서 바로 refreshHome()/loadSuspiciousLinks()를 호출했지만
@@ -643,6 +681,48 @@ function renderSuspiciousLinks(res) {
   }).join('');
 }
 
+// ─── 우수참여(1회성 게스트) ───
+function loadGuestLinks() {
+  api('adminListGuestLinks').then(renderGuestLinks).catch(handleServerError);
+}
+function renderGuestLinks(res) {
+  const tbody = document.getElementById('guestTableBody');
+  if (!res.ok || !res.guests.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="empty-state">등록된 우수참여 없음</td></tr>';
+    return;
+  }
+  tbody.innerHTML = res.guests.map(function(g) {
+    return '<tr><td>' + g.nickname + '</td><td style="word-break:break-all;">' + g.url + '</td><td style="white-space:nowrap;">' + g.createdAt + '</td></tr>';
+  }).join('');
+}
+function openGuestModal() {
+  document.getElementById('guestNickname').value = '';
+  document.getElementById('guestUrl').value = '';
+  document.getElementById('guestModal').classList.remove('hidden');
+}
+function closeGuestModal() {
+  document.getElementById('guestModal').classList.add('hidden');
+}
+function submitGuestLink() {
+  const nickname = document.getElementById('guestNickname').value.trim();
+  const url = document.getElementById('guestUrl').value.trim();
+  if (!nickname || !url) { showToast('닉네임과 URL을 모두 입력해주세요.', 'error'); return; }
+  const btn = document.getElementById('guestSaveBtn');
+  btn.disabled = true; btn.textContent = '등록 중...';
+  api('adminAddGuestLink', { nickname: nickname, url: url })
+    .then(function(res) {
+      btn.disabled = false; btn.textContent = '등록';
+      if (!res.ok) { showToast(res.error, 'error'); return; }
+      showToast('우수멤버 등록됐어요.', 'success');
+      closeGuestModal();
+      loadGuestLinks();
+    })
+    .catch(function(err) {
+      btn.disabled = false; btn.textContent = '등록';
+      handleServerError(err);
+    });
+}
+
 // ─── 멤버 ───
 function addMember() {
   const nickname = document.getElementById('newNickname').value.trim();
@@ -734,7 +814,13 @@ function openForceModal(memberId, nick) {
   document.getElementById('forceModalTitle').textContent = nick + ' — 참여 대리처리';
   document.getElementById('forceDate').value = new Date().toISOString().slice(0, 10);
   document.getElementById('forceTrack').value = 'normal';
+  document.getElementById('forceUrl').value = '';
+  updateForceUrlVisibility();
   document.getElementById('forceModal').classList.remove('hidden');
+}
+function updateForceUrlVisibility() {
+  const track = document.getElementById('forceTrack').value;
+  document.getElementById('forceUrlField').classList.toggle('hidden', track === 'service');
 }
 function closeForceModal() {
   forcingMemberId = null;
@@ -743,10 +829,11 @@ function closeForceModal() {
 function submitForceParticipate() {
   const date = document.getElementById('forceDate').value;
   const track = document.getElementById('forceTrack').value;
+  const url = document.getElementById('forceUrl').value.trim();
   if (!date) { showToast('날짜를 선택해주세요.', 'error'); return; }
   const btn = document.getElementById('forceSaveBtn');
   btn.disabled = true; btn.textContent = '처리 중...';
-  api('adminForceParticipate', { memberId: forcingMemberId, serviceDate: date, track: track })
+  api('adminForceParticipate', { memberId: forcingMemberId, serviceDate: date, track: track, url: url })
     .then(function(res) {
       btn.disabled = false; btn.textContent = '처리';
       if (!res.ok) { showToast(res.error, 'error'); return; }
