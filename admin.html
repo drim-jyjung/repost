@@ -606,6 +606,14 @@ function renderHome(res) {
   document.getElementById('homeRefreshText').textContent = '새로고침';
   if (!res.ok) { showToast('현황을 불러오지 못했어요.', 'error'); return; }
 
+  // 백엔드(Code.gs)가 최신으로 재배포되지 않은 상태에서 프론트만 새 버전이면 일부 필드가
+  // 아예 없을 수 있음 — 그 경우에도 화면이 통째로 안 죽게 빈 배열로 방어
+  res.participants = res.participants || [];
+  res.attendees = res.attendees || [];
+  res.notLanded = res.notLanded || [];
+  res.serviceNotLanded = res.serviceNotLanded || [];
+  res.warningList = res.warningList || [];
+
   document.getElementById('homeDateLabel').textContent = res.serviceDate + ' 기준';
   document.getElementById('homeStats').innerHTML =
     statCard('전체 회원', res.totalMembers) +
