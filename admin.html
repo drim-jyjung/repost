@@ -96,6 +96,8 @@
   .toast.success { border-color: var(--success); }
 
   .empty-state { color: var(--muted); font-size: 13px; padding: 20px; text-align: center; }
+  /* 20건 정도(한 줄 약 26px)만 보이게 높이 제한 후 스크롤 — 길어져도 화면이 한없이 늘어지지 않게 */
+  .scroll-list-20 { max-height: 520px; overflow-y: auto; }
   .hidden { display: none !important; }
 
   .login-screen {
@@ -255,15 +257,26 @@
         <div class="stat-card"><div class="skeleton"></div><div class="skeleton" style="width:40%"></div></div>
       </div>
 
+      <div class="panel">
+        <div class="panel-title"><span>📋 참여자 (오늘 등록 전체, 고정)</span><button class="btn btn-ghost" onclick="copyList('participants')">복사</button></div>
+        <p style="font-size:12px; color:var(--muted); margin:0 0 8px;">나중에 완료해도 이 목록에서 빠지거나 옮겨가지 않아요 — 하루 동안 안정적으로 복사해서 쓰는 용도예요.</p>
+        <div id="participantsList" class="empty-state scroll-list-20">불러오는 중...</div>
+      </div>
+
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
         <div class="panel">
           <div class="panel-title"><span>참석자 (완료)</span><button class="btn btn-ghost" onclick="copyList('attendees')">복사</button></div>
-          <div id="attendeesList" class="empty-state">불러오는 중...</div>
+          <div id="attendeesList" class="empty-state scroll-list-20">불러오는 중...</div>
         </div>
         <div class="panel">
           <div class="panel-title"><span>미착륙자 (등록만, 미완료)</span><button class="btn btn-ghost" onclick="copyList('notLanded')">복사</button></div>
-          <div id="notLandedList" class="empty-state">불러오는 중...</div>
+          <div id="notLandedList" class="empty-state scroll-list-20">불러오는 중...</div>
         </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title"><span>🛠 봉사자 (오늘 등록)</span><button class="btn btn-ghost" onclick="copyList('serviceNotLanded')">복사</button></div>
+        <div id="serviceNotLandedList" class="empty-state scroll-list-20">불러오는 중...</div>
       </div>
 
       <div class="panel">
@@ -422,7 +435,7 @@ const API_URL = 'https://script.google.com/macros/s/AKfycbzXVUjvvw1feZbE0XJhzG_V
 // 요청을 안 보내서(=simple request) 앱스크립트가 못 받는 문제를 피할 수 있음.
 let currentAdmin = null;
 
-function api(action, params) {
+function apiOnce_(action, params) {
   params = params || {};
   // admin* 액션엔 항상 현재 로그인된 운영진의 memberId를 실어보냄 — 서버(requireAdmin_)가
   // 매 호출마다 이 값으로 실제 운영진인지 검증함
@@ -449,6 +462,19 @@ function api(action, params) {
       doAdminLogout();
     }
     return res;
+  });
+}
+
+// 모바일에서 네트워크가 순간 끊기거나(특히 iOS 사파리 + 앱스크립트 리다이렉트 조합) fetch
+// 자체가 실패하는 "Load failed" 류 오류는 재시도 한 번이면 대부분 해결됨. 서버가 응답은
+// 했는데 내용이 이상한 경우(rawResponse 있음)는 재시도해도 똑같을 가능성이 높아 재시도 안 함.
+function api(action, params, _isRetry) {
+  return apiOnce_(action, params).catch(function (err) {
+    if (!_isRetry && !err.rawResponse) {
+      return new Promise(function (resolve) { setTimeout(resolve, 800); })
+        .then(function () { return api(action, params, true); });
+    }
+    throw err;
   });
 }
 
@@ -585,11 +611,28 @@ function renderHome(res) {
     statCard('전체 회원', res.totalMembers) +
     statCard('오늘 참여', res.attendCount) +
     statCard('미착륙', res.notLanded.length) +
+    statCard('미착륙봉사', res.serviceNotLanded.filter(function(s) { return !s.completed; }).length) +
     statCard('경고자', res.warningList.length);
 
-  // No. + 닉네임 @계정 + 참여링크 포맷 (참석자/미착륙자 공통 양식)
+  // 참여자(고정 마스터 리스트) — 완료여부와 무관하게 등록시각순, 나중에 완료돼도 목록에서 안 빠짐
+  document.getElementById('participantsList').innerHTML = res.participants.length
+    ? res.participants.map(function(item, i) {
+        return '<div style="padding:4px 0;">' + (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' — ' + item.link +
+          (item.completed ? ' <span style="color:var(--success); font-weight:600;">(착륙완료)</span>' : '') + '</div>';
+      }).join('')
+    : '<div class="empty-state">아직 없음</div>';
+
+  // No. + 닉네임 @계정 + 참여링크 포맷 (참석자/미착륙자 공통 양식) — 완료자는 완료시각순, 미착륙자는 등록시각순으로 이미 정렬되어 옴
   document.getElementById('attendeesList').innerHTML = renderNumberedLinkList(res.attendees, '아직 없음');
   document.getElementById('notLandedList').innerHTML = renderNumberedLinkList(res.notLanded, '없음');
+  // 봉사는 실제 링크가 없는 트랙이라 링크 대신 경고(D)값을 보여줌. 완료한 사람도 목록에
+  // 계속 남기되 (착륙완료) 라벨로 구분.
+  document.getElementById('serviceNotLandedList').innerHTML = res.serviceNotLanded.length
+    ? res.serviceNotLanded.map(function(item, i) {
+        return '<div style="padding:4px 0;">' + (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' (경고 ' + item.D + ')' +
+          (item.completed ? ' <span style="color:var(--success); font-weight:600;">(착륙완료)</span>' : '') + '</div>';
+      }).join('')
+    : '<div class="empty-state">없음</div>';
   document.getElementById('warningList').innerHTML = res.warningList.length
     ? res.warningList.map(function(w) {
         return '<tr>' +
@@ -618,12 +661,18 @@ function copyList(which) {
   const res = window._todayOverview;
   if (!res) { showToast('먼저 데이터를 불러와주세요.', 'error'); return; }
   let title = '', body = '';
-  if (which === 'attendees') {
+  if (which === 'participants') {
+    title = '참여자 (오늘 등록 전체) — ' + res.serviceDate;
+    body = res.participants.map((item, i) => (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' — ' + item.link + (item.completed ? ' (착륙완료)' : '')).join('\n');
+  } else if (which === 'attendees') {
     title = '참석자 (완료) — ' + res.serviceDate;
     body = res.attendees.map((item, i) => (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' — ' + item.link).join('\n');
   } else if (which === 'notLanded') {
     title = '미착륙자 (등록만, 미완료) — ' + res.serviceDate;
     body = res.notLanded.map((item, i) => (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' — ' + item.link).join('\n');
+  } else if (which === 'serviceNotLanded') {
+    title = '봉사자 (오늘 등록) — ' + res.serviceDate;
+    body = res.serviceNotLanded.map((item, i) => (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' (경고 ' + item.D + ')' + (item.completed ? ' (착륙완료)' : '')).join('\n');
   }
   if (!body) { showToast('복사할 내용이 없어요.', 'error'); return; }
   navigator.clipboard.writeText(title + '\n' + body).then(function() { showToast('복사됐어요.', 'success'); });
