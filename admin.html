@@ -429,7 +429,7 @@
 
 <script>
 // GitHub 등 외부 호스팅에서 구글 앱스크립트를 호출하기 위한 배포 URL
-const API_URL = 'https://script.google.com/macros/s/AKfycbzXVUjvvw1feZbE0XJhzG_V5IFG0I9vyu2jFBbrALZhQ4kqbSlLE-8sk_Lp-wvmueIU/exec';
+const API_URL = 'https://script.google.com/a/macros/in-soft.co.kr/s/AKfycbzUzfeI_YLwMS887vq2svreIEREmFQXsuYoSgVEcdHs-_X1wpVpFYM5WqHDLn9q23kl/exec';
 
 // google.script.run 대신 쓰는 fetch 래퍼. text/plain으로 보내면 브라우저가 preflight(OPTIONS)
 // 요청을 안 보내서(=simple request) 앱스크립트가 못 받는 문제를 피할 수 있음.
@@ -648,7 +648,8 @@ function renderHome(res) {
   serviceEl.className = 'scroll-list-20';
   serviceEl.innerHTML = res.serviceNotLanded.length
     ? res.serviceNotLanded.map(function(item, i) {
-        return '<div style="padding:4px 0; text-align:left;">' + (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' (경고 ' + item.D + ')' +
+        const timeLabel = item.time ? ' <span style="color:var(--muted); font-size:11px;">[' + item.time + ']</span>' : '';
+        return '<div style="padding:4px 0; text-align:left;">' + (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + timeLabel + ' (경고 ' + item.D + ')' +
           (item.completed ? ' <span style="color:var(--success); font-weight:600;">(착륙완료)</span>' : '') + '</div>';
       }).join('')
     : '<div class="empty-state">없음</div>';
@@ -692,7 +693,7 @@ function copyList(which) {
     body = res.notLanded.map((item, i) => (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + (item.time ? ' [등록 ' + item.time + ']' : '') + ' — ' + item.link).join('\n');
   } else if (which === 'serviceNotLanded') {
     title = '봉사자 (오늘 등록) — ' + res.serviceDate;
-    body = res.serviceNotLanded.map((item, i) => (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' (경고 ' + item.D + ')' + (item.completed ? ' (착륙완료)' : '')).join('\n');
+    body = res.serviceNotLanded.map((item, i) => (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + (item.time ? ' [' + item.time + ']' : '') + ' (경고 ' + item.D + ')' + (item.completed ? ' (착륙완료)' : '')).join('\n');
   }
   if (!body) { showToast('복사할 내용이 없어요.', 'error'); return; }
   navigator.clipboard.writeText(title + '\n' + body).then(function() { showToast('복사됐어요.', 'success'); });
