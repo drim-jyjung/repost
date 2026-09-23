@@ -265,11 +265,11 @@
 
       <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
         <div class="panel">
-          <div class="panel-title"><span>참석자 (완료)</span><button class="btn btn-ghost" onclick="copyList('attendees')">복사</button></div>
+          <div class="panel-title"><span>참석자 (완료 — [완료시각] 표시)</span><button class="btn btn-ghost" onclick="copyList('attendees')">복사</button></div>
           <div id="attendeesList" class="empty-state scroll-list-20">불러오는 중...</div>
         </div>
         <div class="panel">
-          <div class="panel-title"><span>미착륙자 (등록만, 미완료)</span><button class="btn btn-ghost" onclick="copyList('notLanded')">복사</button></div>
+          <div class="panel-title"><span>미착륙자 (등록만, 미완료 — [등록시각] 표시)</span><button class="btn btn-ghost" onclick="copyList('notLanded')">복사</button></div>
           <div id="notLandedList" class="empty-state scroll-list-20">불러오는 중...</div>
         </div>
       </div>
@@ -623,21 +623,32 @@ function renderHome(res) {
     statCard('경고자', res.warningList.length);
 
   // 참여자(고정 마스터 리스트) — 완료여부와 무관하게 등록시각순, 나중에 완료돼도 목록에서 안 빠짐
-  document.getElementById('participantsList').innerHTML = res.participants.length
+  // (컨테이너 자체엔 더 이상 empty-state를 안 남겨서 텍스트가 가운데로 안 쏠리게 함 —
+  //  "데이터 없음" 메시지만 그 안의 별도 div로 가운데정렬됨)
+  const participantsEl = document.getElementById('participantsList');
+  participantsEl.className = 'scroll-list-20';
+  participantsEl.innerHTML = res.participants.length
     ? res.participants.map(function(item, i) {
-        return '<div style="padding:4px 0;">' + (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' — ' + item.link +
+        const timeLabel = item.time ? ' <span style="color:var(--muted); font-size:11px;">[' + item.time + ']</span>' : '';
+        return '<div style="padding:4px 0; text-align:left;">' + (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + timeLabel + ' — ' + item.link +
           (item.completed ? ' <span style="color:var(--success); font-weight:600;">(착륙완료)</span>' : '') + '</div>';
       }).join('')
     : '<div class="empty-state">아직 없음</div>';
 
   // No. + 닉네임 @계정 + 참여링크 포맷 (참석자/미착륙자 공통 양식) — 완료자는 완료시각순, 미착륙자는 등록시각순으로 이미 정렬되어 옴
-  document.getElementById('attendeesList').innerHTML = renderNumberedLinkList(res.attendees, '아직 없음');
-  document.getElementById('notLandedList').innerHTML = renderNumberedLinkList(res.notLanded, '없음');
+  const attendeesEl = document.getElementById('attendeesList');
+  attendeesEl.className = 'scroll-list-20';
+  attendeesEl.innerHTML = renderNumberedLinkList(res.attendees, '아직 없음');
+  const notLandedEl = document.getElementById('notLandedList');
+  notLandedEl.className = 'scroll-list-20';
+  notLandedEl.innerHTML = renderNumberedLinkList(res.notLanded, '없음');
   // 봉사는 실제 링크가 없는 트랙이라 링크 대신 경고(D)값을 보여줌. 완료한 사람도 목록에
   // 계속 남기되 (착륙완료) 라벨로 구분.
-  document.getElementById('serviceNotLandedList').innerHTML = res.serviceNotLanded.length
+  const serviceEl = document.getElementById('serviceNotLandedList');
+  serviceEl.className = 'scroll-list-20';
+  serviceEl.innerHTML = res.serviceNotLanded.length
     ? res.serviceNotLanded.map(function(item, i) {
-        return '<div style="padding:4px 0;">' + (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' (경고 ' + item.D + ')' +
+        return '<div style="padding:4px 0; text-align:left;">' + (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' (경고 ' + item.D + ')' +
           (item.completed ? ' <span style="color:var(--success); font-weight:600;">(착륙완료)</span>' : '') + '</div>';
       }).join('')
     : '<div class="empty-state">없음</div>';
@@ -657,7 +668,8 @@ function renderHome(res) {
 function renderNumberedLinkList(list, emptyText) {
   if (!list.length) return '<div class="empty-state">' + emptyText + '</div>';
   return list.map(function(item, i) {
-    return '<div style="padding:4px 0;">' + (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' — ' + item.link + '</div>';
+    const timeLabel = item.time ? ' <span style="color:var(--muted); font-size:11px;">[' + item.time + ']</span>' : '';
+    return '<div style="padding:4px 0; text-align:left;">' + (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + timeLabel + ' — ' + item.link + '</div>';
   }).join('');
 }
 
@@ -671,13 +683,13 @@ function copyList(which) {
   let title = '', body = '';
   if (which === 'participants') {
     title = '참여자 (오늘 등록 전체) — ' + res.serviceDate;
-    body = res.participants.map((item, i) => (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' — ' + item.link + (item.completed ? ' (착륙완료)' : '')).join('\n');
+    body = res.participants.map((item, i) => (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + (item.time ? ' [' + item.time + ']' : '') + ' — ' + item.link + (item.completed ? ' (착륙완료)' : '')).join('\n');
   } else if (which === 'attendees') {
     title = '참석자 (완료) — ' + res.serviceDate;
-    body = res.attendees.map((item, i) => (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' — ' + item.link).join('\n');
+    body = res.attendees.map((item, i) => (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + (item.time ? ' [완료 ' + item.time + ']' : '') + ' — ' + item.link).join('\n');
   } else if (which === 'notLanded') {
     title = '미착륙자 (등록만, 미완료) — ' + res.serviceDate;
-    body = res.notLanded.map((item, i) => (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' — ' + item.link).join('\n');
+    body = res.notLanded.map((item, i) => (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + (item.time ? ' [등록 ' + item.time + ']' : '') + ' — ' + item.link).join('\n');
   } else if (which === 'serviceNotLanded') {
     title = '봉사자 (오늘 등록) — ' + res.serviceDate;
     body = res.serviceNotLanded.map((item, i) => (i + 1) + '. ' + nickAcc(item.nickname, item.accountId) + ' (경고 ' + item.D + ')' + (item.completed ? ' (착륙완료)' : '')).join('\n');
@@ -714,11 +726,15 @@ function renderClosureReport(res) {
     return;
   }
   document.getElementById('closureTabLabel').textContent = res.tabName + ' 마감 기준';
-  document.getElementById('closureWarnList').innerHTML = res.warnList.length
-    ? res.warnList.map((w, i) => '<div style="padding:4px 0;">' + (i + 1) + '. ' + nickAcc(w.nickname, w.accountId) + '</div>').join('')
+  const warnEl = document.getElementById('closureWarnList');
+  warnEl.className = '';
+  warnEl.innerHTML = res.warnList.length
+    ? res.warnList.map((w, i) => '<div style="padding:4px 0; text-align:left;">' + (i + 1) + '. ' + nickAcc(w.nickname, w.accountId) + '</div>').join('')
     : '<div class="empty-state">경고자 없음</div>';
-  document.getElementById('closureHonorList').innerHTML = res.honorList.length
-    ? res.honorList.map((w, i) => '<div style="padding:4px 0;">' + (i + 1) + '. ' + nickAcc(w.nickname, w.accountId) + '</div>').join('')
+  const honorEl = document.getElementById('closureHonorList');
+  honorEl.className = '';
+  honorEl.innerHTML = res.honorList.length
+    ? res.honorList.map((w, i) => '<div style="padding:4px 0; text-align:left;">' + (i + 1) + '. ' + nickAcc(w.nickname, w.accountId) + '</div>').join('')
     : '<div class="empty-state">해당자 없음</div>';
 }
 
