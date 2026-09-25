@@ -28,6 +28,7 @@
   .sidebar.collapsed .nav-item .label { display: none; }
   .nav-item:hover { background: var(--panel2); color: var(--text); }
   .nav-item.active { border-left-color: var(--accent); color: var(--text); background: var(--panel2); font-weight: 600; }
+  .member-filter-btn.active { background: var(--accent); color: #0D1B2A; font-weight: 700; }
   .main { flex: 1; padding: 28px 36px; max-width: 1100px; min-width: 0; }
 
   @media (max-width: 900px) {
@@ -375,6 +376,17 @@
       <h2>주간현황</h2>
       <div class="sub" id="weeklyTabLabel">불러오는 중...</div>
 
+      <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px;">
+        <div class="panel">
+          <div class="panel-title"><span>⚠️ 경고 (이번주 0회)</span><button class="btn btn-ghost" onclick="copyWeeklyCountList('zero')">복사</button></div>
+          <div id="weeklyZeroList" class="empty-state">불러오는 중...</div>
+        </div>
+        <div class="panel">
+          <div class="panel-title"><span>🔶 주의 (이번주 1회)</span><button class="btn btn-ghost" onclick="copyWeeklyCountList('one')">복사</button></div>
+          <div id="weeklyOneList" class="empty-state">불러오는 중...</div>
+        </div>
+      </div>
+
       <div class="panel">
         <div class="panel-title">
           <span>이번 주 현황</span>
@@ -412,8 +424,18 @@
 
       <div class="panel">
         <div class="panel-title">
-          <span>전체 명단</span>
+          <span>전체 명단 (<span id="membersCount">0</span>명)</span>
           <button class="btn btn-ghost" onclick="loadMembers()"><span id="membersRefreshText">새로고침</span></button>
+        </div>
+        <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; align-items:center;">
+          <input type="text" id="memberSearchInput" placeholder="닉네임/계정 검색" oninput="applyMemberFilter()" style="flex:1; min-width:160px; padding:8px 12px; border:1px solid var(--border); border-radius:8px; background:var(--panel2); color:var(--text); font-size:13px;">
+          <span style="display:flex; gap:6px; flex-wrap:wrap;">
+            <button class="btn btn-ghost member-filter-btn active" data-filter="all" onclick="setMemberFilter('all')">전체</button>
+            <button class="btn btn-ghost member-filter-btn" data-filter="honor" onclick="setMemberFilter('honor')">명예</button>
+            <button class="btn btn-ghost member-filter-btn" data-filter="service" onclick="setMemberFilter('service')">봉사</button>
+            <button class="btn btn-ghost member-filter-btn" data-filter="locked" onclick="setMemberFilter('locked')">잠금</button>
+            <button class="btn btn-ghost member-filter-btn" data-filter="normal" onclick="setMemberFilter('normal')">정상</button>
+          </span>
         </div>
         <div class="table-scroll"><table>
           <thead><tr><th>닉네임</th><th>계정</th><th>role</th><th>명예</th><th>경고</th><th>상태</th><th>동작</th></tr></thead>
@@ -835,19 +857,52 @@ function addMember() {
     .catch(function(e) { document.getElementById('addBtnText').textContent = '추가'; handleServerError(e); });
 }
 
+let currentMemberFilter = 'all';
+
 function loadMembers() {
   document.getElementById('membersRefreshText').innerHTML = '<span class="spinner"></span>';
-  api('adminListMembers').then(renderMembers).catch(handleServerError);
+  api('adminListMembers').then(function(res) {
+    document.getElementById('membersRefreshText').textContent = '새로고침';
+    if (!res.ok) { showToast('멤버 목록을 불러오지 못했어요.', 'error'); return; }
+    window._allMembers = res.members; // 검색/필터는 서버 재호출 없이 여기서 클라이언트에서 처리
+    applyMemberFilter();
+  }).catch(function(e) {
+    document.getElementById('membersRefreshText').textContent = '새로고침';
+    handleServerError(e);
+  });
 }
 
-function renderMembers(res) {
-  document.getElementById('membersRefreshText').textContent = '새로고침';
+function setMemberFilter(filter) {
+  currentMemberFilter = filter;
+  document.querySelectorAll('.member-filter-btn').forEach(function(btn) {
+    btn.classList.toggle('active', btn.dataset.filter === filter);
+  });
+  applyMemberFilter();
+}
+
+// 명예/봉사/잠금/정상 탭 + 텍스트 검색을 조합해서 필터링 (서버 재호출 없이 클라이언트에서 처리)
+function applyMemberFilter() {
+  const all = window._allMembers || [];
+  const q = (document.getElementById('memberSearchInput').value || '').trim().toLowerCase();
+  const filtered = all.filter(function(m) {
+    if (q && m.nickname.toLowerCase().indexOf(q) === -1 && m.accountId.toLowerCase().indexOf(q) === -1) return false;
+    if (currentMemberFilter === 'honor') return m.honor > 0;
+    if (currentMemberFilter === 'service') return m.D >= 1 && m.role !== '운영진' && m.lockStatus !== '잠금';
+    if (currentMemberFilter === 'locked') return m.lockStatus === '잠금';
+    if (currentMemberFilter === 'normal') return m.lockStatus !== '잠금' && !(m.D >= 1 && m.role !== '운영진');
+    return true; // all
+  });
+  renderMembers(filtered);
+}
+
+function renderMembers(members) {
   const tbody = document.getElementById('membersTableBody');
-  if (!res.ok || !res.members.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">회원이 없어요.</td></tr>';
+  document.getElementById('membersCount').textContent = members.length;
+  if (!members.length) {
+    tbody.innerHTML = '<tr><td colspan="7" class="empty-state">해당하는 회원이 없어요.</td></tr>';
     return;
   }
-  tbody.innerHTML = res.members.map(function(m) {
+  tbody.innerHTML = members.map(function(m) {
     const rowClass = m.lockStatus === '잠금' ? ' class="locked"' : '';
     const roleOptions = ['일반', '운영진'].map(r => '<option value="' + r + '"' + (r === m.role ? ' selected' : '') + '>' + r + '</option>').join('');
     // Home의 경고자 표와 같은 기준으로 상태 라벨 통일: 잠금 > 봉사대상(D≥1, 운영진 제외) > 정상
@@ -1039,7 +1094,26 @@ function renderWeeklyTable(res) {
         return '<tr' + (isLocked ? ' class="locked"' : '') + '>' + r.map(c => '<td>' + (c === '' ? '-' : c) + '</td>').join('') + '</tr>';
       }).join('')
     : '<tr><td class="empty-state">회원 없음</td></tr>';
-  window._weeklyTable = res; // CSV 다운로드용으로 캐시
+
+  const zeroList = res.zeroList || [], oneList = res.oneList || [];
+  document.getElementById('weeklyZeroList').innerHTML = zeroList.length
+    ? zeroList.map((w, i) => '<div style="padding:4px 0; text-align:left;">' + (i + 1) + '. ' + nickAcc(w.nickname, w.accountId) + '</div>').join('')
+    : '<div class="empty-state">없음</div>';
+  document.getElementById('weeklyOneList').innerHTML = oneList.length
+    ? oneList.map((w, i) => '<div style="padding:4px 0; text-align:left;">' + (i + 1) + '. ' + nickAcc(w.nickname, w.accountId) + '</div>').join('')
+    : '<div class="empty-state">없음</div>';
+
+  window._weeklyTable = res; // CSV 다운로드/복사용으로 캐시
+}
+
+function copyWeeklyCountList(which) {
+  const res = window._weeklyTable;
+  if (!res || !res.tabName) { showToast('먼저 주간현황을 불러와주세요.', 'error'); return; }
+  const list = which === 'zero' ? (res.zeroList || []) : (res.oneList || []);
+  if (!list.length) { showToast('복사할 내용이 없어요.', 'error'); return; }
+  const title = (which === 'zero' ? '경고 (이번주 0회) — ' : '주의 (이번주 1회) — ') + res.tabName;
+  const body = list.map((w, i) => (i + 1) + '. ' + nickAcc(w.nickname, w.accountId)).join('\n');
+  navigator.clipboard.writeText(title + '\n' + body).then(function() { showToast('복사됐어요.', 'success'); });
 }
 
 function csvEscape(v) {
